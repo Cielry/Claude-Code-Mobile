@@ -1,0 +1,947 @@
+{
+  "version": 7,
+  "packages": [
+    {
+      "id": "node",
+      "name": "Node.js",
+      "category": "语言运行时",
+      "description": "JavaScript 运行时，含 npm / npx / corepack",
+      "version": "24.22.2",
+      "size": 58030966,
+      "sha256": "95c264150aceb7f3437a29fd6984924f5f8d1511ea3cbd6c508b83f6c555dae2",
+      "urls": [
+        "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v24.22.2/node-v24.22.2-linux-arm64.tgz",
+        "https://registry.npmmirror.com/-/binary/node/v24.22.2/node-v24.22.2-linux-arm64.tgz",
+        "https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tgz"
+      ],
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "node",
+        "npm",
+        "npx",
+        "corepack"
+      ],
+      "libs": [],
+      "checkArgs": [
+        "-v"
+      ]
+    },
+    {
+      "id": "python",
+      "name": "Python",
+      "category": "语言运行时",
+      "description": "CPython 3.13，含 pip",
+      "version": "3.13.18",
+      "size": 58894021,
+      "sha256": "b48451865bde9a39e2f3e71d7fdcbf1f32615f50f24d78dc50d04ede6501cf81",
+      "urls": [
+        "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone/20261026/cpython-3.13.18%2B20261026-aarch64-unknown-linux-gnu-install_only.tgz",
+        "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18%2B20261026-aarch64-unknown-linux-gnu-install_only.tgz"
+      ],
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "python3",
+        "python",
+        "python3.13",
+        "pip3",
+        "pip"
+      ],
+      "libs": [],
+      "checkArgs": [
+        "-V"
+      ]
+    },
+    {
+      "id": "jdk",
+      "name": "JDK",
+      "category": "语言运行时",
+      "description": "Temurin OpenJDK 21，含 java / javac / jar",
+      "version": "21.0.13+9",
+      "size": 205995218,
+      "sha256": "e3522e707fc7dbe2a72c30746b1e7068301a0213ecd213d4491f35a14eb55578",
+      "urls": [
+        "https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/aarch64/linux/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.13_9.tgz",
+        "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.13_9.tgz"
+      ],
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "java",
+        "javac",
+        "jar",
+        "javadoc",
+        "javap",
+        "jarsigner",
+        "jlink",
+        "jpackage",
+        "jcmd",
+        "jdb",
+        "keytool",
+        "jshell"
+      ],
+      "libs": [
+        "lib"
+      ],
+      "env": {
+        "JAVA_HOME": "$PKG"
+      },
+      "checkArgs": [
+        "-version"
+      ]
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "category": "开发工具",
+      "description": "版本控制（含 libexec 与模板）",
+      "version": "2.56.0",
+      "size": 14017078,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/git.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "git"
+      ],
+      "libs": [],
+      "env": {
+        "GIT_EXEC_PATH": "$PKG/libexec/git-core",
+        "GIT_TEMPLATE_DIR": "$PKG/share/git-core/templates",
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "GIT_SSL_CAINFO": "$PKG/etc/cert.pem",
+        "SSL_CERT_FILE": "$PKG/etc/cert.pem"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "curl",
+      "name": "curl",
+      "category": "网络工具",
+      "description": "HTTP 客户端（含 OpenSSL/HTTP2）",
+      "version": "8.22.0",
+      "size": 3956743,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/curl.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "curl"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "CURL_CA_BUNDLE": "$PKG/etc/cert.pem",
+        "SSL_CERT_FILE": "$PKG/etc/cert.pem"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "openssh",
+      "name": "OpenSSH 客户端",
+      "category": "网络工具",
+      "description": "ssh / scp / sftp / ssh-keygen",
+      "version": "10.6p1",
+      "size": 4661697,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/openssh.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "ssh",
+        "scp",
+        "sftp",
+        "ssh-keygen",
+        "ssh-add"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "-V"
+      ]
+    },
+    {
+      "id": "jq",
+      "name": "jq",
+      "category": "辅助工具",
+      "description": "JSON 处理器",
+      "version": "1.8.2",
+      "size": 352170,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/jq.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "jq"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "bash",
+      "name": "Bash",
+      "category": "Shell 与文本工具",
+      "description": "GNU Bash shell，可作为终端默认 shell",
+      "version": "5.3.20",
+      "size": 1482153,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/bash.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "bash"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "coreutils",
+      "name": "GNU Coreutils",
+      "category": "Shell 与文本工具",
+      "description": "ls / cp / mv / sort 等基础文件与文本命令",
+      "version": "9.11",
+      "size": 4227188,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/coreutils.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "ls",
+        "b2sum",
+        "base32",
+        "base64",
+        "basename",
+        "basenc",
+        "cat",
+        "chcon",
+        "chgrp",
+        "chmod",
+        "chown",
+        "chroot",
+        "cksum",
+        "comm",
+        "coreutils",
+        "cp",
+        "csplit",
+        "cut",
+        "date",
+        "dd",
+        "dir",
+        "dircolors",
+        "dirname",
+        "du",
+        "echo",
+        "env",
+        "expand",
+        "expr",
+        "factor",
+        "false",
+        "fmt",
+        "fold",
+        "groups",
+        "head",
+        "id",
+        "install",
+        "join",
+        "kill",
+        "link",
+        "ln",
+        "logname",
+        "md5sum",
+        "mkdir",
+        "mkfifo",
+        "mknod",
+        "mktemp",
+        "mv",
+        "nice",
+        "nl",
+        "nohup",
+        "nproc",
+        "numfmt",
+        "od",
+        "paste",
+        "pathchk",
+        "pr",
+        "printenv",
+        "printf",
+        "ptx",
+        "pwd",
+        "readlink",
+        "realpath",
+        "rm",
+        "rmdir",
+        "runcon",
+        "seq",
+        "sha1sum",
+        "sha224sum",
+        "sha256sum",
+        "sha384sum",
+        "sha512sum",
+        "shred",
+        "shuf",
+        "sleep",
+        "sort",
+        "split",
+        "stat",
+        "stdbuf",
+        "stty",
+        "sum",
+        "sync",
+        "tac",
+        "tail",
+        "tee",
+        "test",
+        "timeout",
+        "touch",
+        "tr",
+        "true",
+        "truncate",
+        "tsort",
+        "tty",
+        "uname",
+        "unexpand",
+        "uniq",
+        "unlink",
+        "vdir",
+        "wc",
+        "whoami",
+        "yes"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "grep",
+      "name": "Grep",
+      "category": "Shell 与文本工具",
+      "description": "文本模式搜索",
+      "version": "3.12",
+      "size": 331079,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/grep.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "grep"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "sed",
+      "name": "Sed",
+      "category": "Shell 与文本工具",
+      "description": "流编辑器",
+      "version": "4.10",
+      "size": 86030,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/sed.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "sed"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "gawk",
+      "name": "Gawk",
+      "category": "Shell 与文本工具",
+      "description": "GNU awk 文本处理，含 awk 兼容入口",
+      "version": "5.3.2",
+      "size": 1016452,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/gawk.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "gawk",
+        "awk"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "findutils",
+      "name": "Findutils",
+      "category": "Shell 与文本工具",
+      "description": "find / xargs 文件查找",
+      "version": "4.11.0",
+      "size": 180204,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/findutils.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "find",
+        "xargs"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "tar",
+      "name": "Tar",
+      "category": "Shell 与文本工具",
+      "description": "tar 归档与解包",
+      "version": "1.35",
+      "size": 1252396,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/tar.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "tar"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "less",
+      "name": "Less",
+      "category": "Shell 与文本工具",
+      "description": "终端分页查看器",
+      "version": "710",
+      "size": 517902,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/less.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "less"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "diffutils",
+      "name": "Diffutils",
+      "category": "Shell 与文本工具",
+      "description": "diff / cmp 等文件比较",
+      "version": "3.12",
+      "size": 168717,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/diffutils.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "diff",
+        "cmp",
+        "diff3",
+        "sdiff"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "patch",
+      "name": "Patch",
+      "category": "Shell 与文本工具",
+      "description": "补丁应用工具",
+      "version": "2.8",
+      "size": 75946,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/patch.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "patch"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "ed",
+      "name": "Ed",
+      "category": "Shell 与文本工具",
+      "description": "经典行编辑器",
+      "version": "1.22.6",
+      "size": 24324,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/ed.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "ed"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "dos2unix",
+      "name": "Dos2Unix",
+      "category": "Shell 与文本工具",
+      "description": "文本换行符转换",
+      "version": "7.5.7",
+      "size": 82750,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/dos2unix.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "dos2unix",
+        "unix2dos",
+        "mac2unix",
+        "unix2mac"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "gzip",
+      "name": "Gzip",
+      "category": "压缩与归档",
+      "description": "gzip 压缩，含 gunzip / zcat / uncompress",
+      "version": "1.15",
+      "size": 50614,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/gzip.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "gzip",
+        "gunzip",
+        "zcat",
+        "uncompress"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "xz",
+      "name": "XZ Utils",
+      "category": "压缩与归档",
+      "description": "xz / lzma 压缩工具集",
+      "version": "5.8.4",
+      "size": 135022,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/xz.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "xz",
+        "unxz",
+        "xzcat",
+        "xzdec",
+        "lzma",
+        "unlzma",
+        "lzcat",
+        "lzmadec",
+        "lzmainfo"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "zstd",
+      "name": "Zstandard",
+      "category": "压缩与归档",
+      "description": "zstd 压缩，含 unzstd / zstdcat / zstdmt",
+      "version": "1.5.7",
+      "size": 529010,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/zstd.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "zstd",
+        "unzstd",
+        "zstdcat",
+        "zstdmt"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "brotli",
+      "name": "Brotli",
+      "category": "压缩与归档",
+      "description": "Brotli 压缩",
+      "version": "1.2.0",
+      "size": 426238,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/brotli.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "brotli"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "unzip",
+      "name": "Unzip",
+      "category": "压缩与归档",
+      "description": "zip 解压，含 funzip / zipinfo",
+      "version": "6.0",
+      "size": 213600,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/unzip.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "unzip",
+        "funzip",
+        "zipinfo",
+        "unzipsfx"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "-v"
+      ]
+    },
+    {
+      "id": "ncurses",
+      "name": "Ncurses 工具",
+      "category": "系统工具",
+      "description": "clear / tset / reset 与 terminfo 数据",
+      "version": "6.6.20260307+really6.5.20250830",
+      "size": 198595,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/ncurses.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "clear",
+        "tset",
+        "reset"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo"
+      },
+      "checkArgs": [
+        "-V"
+      ]
+    },
+    {
+      "id": "screen",
+      "name": "GNU Screen",
+      "category": "系统工具",
+      "description": "终端复用器，会话保持与分屏",
+      "version": "5.0.2",
+      "size": 2771780,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/screen.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "screen"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo",
+        "SCREENDIR": "$PKG/.screen"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "procps",
+      "name": "Procps",
+      "category": "系统工具",
+      "description": "ps / free / watch 等进程与内存查看",
+      "version": "4.0.7",
+      "size": 400608,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/procps.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "free",
+        "ps",
+        "watch",
+        "uptime",
+        "vmstat",
+        "pgrep",
+        "pkill",
+        "pidof",
+        "pmap",
+        "pwdx",
+        "sysctl",
+        "tload",
+        "hugetop"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "psmisc",
+      "name": "Psmisc",
+      "category": "系统工具",
+      "description": "killall / pstree / fuser 进程工具",
+      "version": "23.7",
+      "size": 210156,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/psmisc.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "killall",
+        "pstree",
+        "fuser",
+        "prtstat",
+        "pslog",
+        "peekfd"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "lsof",
+      "name": "Lsof",
+      "category": "系统工具",
+      "description": "查看进程打开的文件",
+      "version": "4.99.7",
+      "size": 158174,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/lsof.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "lsof"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib"
+      },
+      "checkArgs": [
+        "-v"
+      ]
+    },
+    {
+      "id": "nano",
+      "name": "Nano",
+      "category": "系统工具",
+      "description": "轻量终端文本编辑器",
+      "version": "9.2",
+      "size": 489568,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/nano.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "nano"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "dialog",
+      "name": "Dialog",
+      "category": "系统工具",
+      "description": "终端图形对话框",
+      "version": "1.3-20260721",
+      "size": 297587,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/dialog.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "dialog"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    },
+    {
+      "id": "util-linux",
+      "name": "Util-linux",
+      "category": "系统工具",
+      "description": "cal / column / hexdump / script 等工具集",
+      "version": "2.42.4",
+      "size": 807178,
+      "sha256": "",
+      "urls": [],
+      "bundled": "env/bundled/util-linux.tgz",
+      "stripComponents": 1,
+      "binDir": "bin",
+      "commands": [
+        "cal",
+        "col",
+        "colcrt",
+        "colrm",
+        "column",
+        "flock",
+        "getopt",
+        "hexdump",
+        "look",
+        "more",
+        "namei",
+        "rename",
+        "renice",
+        "rev",
+        "script",
+        "scriptlive",
+        "scriptreplay",
+        "setterm",
+        "setsid",
+        "ul",
+        "whereis",
+        "lscpu",
+        "lsfd",
+        "mcookie"
+      ],
+      "libs": [],
+      "env": {
+        "LD_LIBRARY_PATH": "$PKG/lib",
+        "TERMINFO": "$PKG/share/terminfo"
+      },
+      "checkArgs": [
+        "--version"
+      ]
+    }
+  ]
+}

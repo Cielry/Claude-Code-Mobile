@@ -1,0 +1,32 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace "com.termux.emulator"
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 28
+        targetSdk 28
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // JNI（libtermux.so）由 scripts/build-termux-jni.sh 用 clang 预编译到 src/main/jniLibs，
+    // 避免在本项目构建环境中依赖 ndk-build。
+}
+
+dependencies {
+    implementation "androidx.annotation:annotation:1.9.0"
+}

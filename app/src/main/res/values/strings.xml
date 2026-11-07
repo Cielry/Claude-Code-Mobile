@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Claude Code Mobile</string>
+    <string name="tab_terminal">工作</string>
+    <string name="tab_environment">环境</string>
+    <string name="tab_models">配置</string>
+    <string name="tab_settings">设置</string>
+</resources>

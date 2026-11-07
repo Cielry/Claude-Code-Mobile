@@ -1,0 +1,6 @@
+# 复制为 local.properties 后，改成你自己的 Android SDK 路径。
+# 该文件不要提交到仓库。
+sdk.dir=/path/to/Android/Sdk
+
+# Termux + 本机隔离工具链示例：
+# sdk.dir=/data/data/com.termux/files/home/ccm-toolchain/sdk

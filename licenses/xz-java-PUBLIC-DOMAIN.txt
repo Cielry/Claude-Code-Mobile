@@ -1,0 +1,19 @@
+XZ for Java 1.9
+https://tukaani.org/xz/java.html
+
+Author: Lasse Collin <lasse.collin@tukaani.org>
+
+Upstream declares this package to be in the public domain.
+
+The following is quoted from the Maven POM of org.tukaani:xz:1.9:
+
+    This file has been put into the public domain.
+    You can do whatever you want with this file.
+
+    <licenses>
+        <license>
+            <name>Public Domain</name>
+            <comments>You can do whatever you want with this package.</comments>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
