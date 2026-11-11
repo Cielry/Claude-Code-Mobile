@@ -2,6 +2,7 @@ package com.lyuan.cc.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,9 +10,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -36,11 +40,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lyuan.cc.env.AptMirror
+import com.lyuan.cc.env.BatchTarget
 import com.lyuan.cc.env.CatalogPackage
 import com.lyuan.cc.env.EnvManager
 import com.lyuan.cc.env.InstalledPackage
@@ -72,6 +78,8 @@ private data class PackageEntry(
     val size: Long,
     val catalog: CatalogPackage?,
     val termux: TermuxPackage?,
+    val recommended: Boolean = false,
+    val description: String = "",
 )
 
 private data class UninstallTarget(val id: String, val name: String)
@@ -107,6 +115,8 @@ private fun buildPackageEntries(
                 size = 0L,
                 catalog = null,
                 termux = pkg,
+                recommended = pkg.recommended,
+                description = pkg.description,
             )
         }
     }
@@ -123,16 +133,23 @@ private fun buildPackageEntries(
             )
         }
     }
-    return entries.values.sortedBy { it.name.lowercase(Locale.US) }
+    // 推荐包优先，其余按名称排序；列表本身仍是一个统一的「包」列表。
+    return entries.values.sortedWith(
+        compareByDescending<PackageEntry> { it.recommended }
+            .thenBy { it.name.lowercase(Locale.US) }
+    )
 }
 
 @Composable
 fun EnvironmentScreen(
     manager: EnvManager,
     installed: List<InstalledPackage>,
+    customWorkspace: String?,
+    onOpenConfig: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val probe by manager.probe.collectAsState()
+    val batchState by manager.batchState.collectAsState()
     val context = LocalContext.current
 
     var detecting by remember { mutableStateOf(false) }
@@ -141,6 +158,7 @@ fun EnvironmentScreen(
     var uninstallTarget by remember { mutableStateOf<UninstallTarget?>(null) }
 
     var pendingExport by remember { mutableStateOf("") }
+    var showWorkspaceRequired by remember { mutableStateOf(false) }
     var customName by rememberSaveable { mutableStateOf("") }
     var mirrorIndex by rememberSaveable { mutableIntStateOf(0) }
     var mirrorMenu by remember { mutableStateOf(false) }
@@ -302,9 +320,32 @@ fun EnvironmentScreen(
         } else {
             entries.filter {
                 it.id.contains(query, ignoreCase = true) ||
-                    it.name.contains(query, ignoreCase = true)
+                    it.name.contains(query, ignoreCase = true) ||
+                    it.description.contains(query, ignoreCase = true)
             }
         }
+    }
+    val pendingCount = filtered.count { installedById[it.id] == null }
+
+    fun startOneClick() {
+        val workspace = customWorkspace?.takeIf { it.isNotBlank() }
+        if (workspace == null) {
+            showWorkspaceRequired = true
+            return
+        }
+        val targets = filtered
+            .filter { installedById[it.id] == null }
+            .map { BatchTarget(it.id, it.name, it.version, it.catalog) }
+        if (targets.isEmpty()) {
+            addMessage("当前列表里的包都已安装，无需重复安装。")
+            return
+        }
+        manager.startBatchInstall(
+            targets = targets,
+            mirror = AptMirror.ALL[mirrorIndex],
+            workspace = workspace,
+            skipped = filtered.size - targets.size,
+        )
     }
 
     LazyColumn(
@@ -375,14 +416,37 @@ fun EnvironmentScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        OutlinedTextField(
-                            value = customName,
-                            onValueChange = { customName = it },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodySmall,
-                            placeholder = { Text("包名，或 pkg install 包名") },
-                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outline,
+                                    RoundedCornerShape(8.dp),
+                                )
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            if (customName.isEmpty()) {
+                                Text(
+                                    "包名，或 pkg install 包名",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            BasicTextField(
+                                value = customName,
+                                onValueChange = { customName = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodySmall.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            )
+                        }
                         Box {
                             OutlinedButton(
                                 onClick = { mirrorMenu = true },
@@ -477,14 +541,73 @@ fun EnvironmentScreen(
         }
 
         if (packagesExpanded) {
+            item(key = "one-click") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            enabled = !batchState.running && pendingCount > 0,
+                            onClick = { startOneClick() },
+                        ) {
+                            Text(
+                                if (batchState.running) "一键安装中…"
+                                else "一键安装（$pendingCount）"
+                            )
+                        }
+                        if (batchState.running) {
+                            OutlinedButton(onClick = { manager.cancelBatchInstall() }) {
+                                Text("停止")
+                            }
+                        }
+                    }
+                    Text(
+                        if (customWorkspace == null) {
+                            "一键安装需要先在「配置」页添加并选择自定义工作区。"
+                        } else {
+                            "当前列表中的包：已安装的跳过，失败的包会整理成报告写入该工作区。"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (batchState.running || batchState.done > 0) {
+                        Text(
+                            "进度 ${batchState.done}/${batchState.total}" +
+                                if (batchState.current.isNotBlank()) {
+                                    " · ${batchState.current}"
+                                } else {
+                                    ""
+                                },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (batchState.message.isNotBlank()) {
+                        Text(
+                            batchState.message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             item(key = "search") {
-                OutlinedTextField(
-                    value = packageQuery,
-                    onValueChange = { packageQuery = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("搜索包名") },
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedTextField(
+                        value = packageQuery,
+                        onValueChange = { packageQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("搜索包名") },
+                    )
+                    Text(
+                        "「推荐」包适合优先安装；「依赖」包会随其它包自动安装。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (filtered.isEmpty()) {
                 item(key = "empty") {
@@ -553,6 +676,28 @@ fun EnvironmentScreen(
             },
         )
     }
+
+    if (showWorkspaceRequired) {
+        AlertDialog(
+            onDismissRequest = { showWorkspaceRequired = false },
+            title = { Text("需要自定义工作区") },
+            text = {
+                Text(
+                    "一键安装会把安装失败的包整理成报告，写入自定义工作区。" +
+                        "请先在「配置」页添加并选择一个自定义工作区，再回来一键安装。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showWorkspaceRequired = false
+                    onOpenConfig()
+                }) { Text("去配置") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWorkspaceRequired = false }) { Text("取消") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -585,7 +730,12 @@ private fun PackageRow(
                             append("%.1f".format(entry.size / 1048576.0))
                             append(" MB")
                         }
-                        if (record?.automatic == true) append(" · 依赖")
+                        if (entry.recommended) append(" · 推荐")
+                        if (entry.termux?.automatic == true ||
+                            record?.automatic == true
+                        ) {
+                            append(" · 依赖")
+                        }
                         if (record != null) append(" · 已安装")
                         when (record?.status) {
                             "ok" -> append(" · ✓")
@@ -595,6 +745,13 @@ private fun PackageRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (entry.description.isNotBlank()) {
+                    Text(
+                        entry.description,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (busy && task != null) {
                     Text(
                         taskLabel(task),

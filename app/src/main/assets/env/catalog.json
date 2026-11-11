@@ -10,9 +10,9 @@
       "size": 58030966,
       "sha256": "95c264150aceb7f3437a29fd6984924f5f8d1511ea3cbd6c508b83f6c555dae2",
       "urls": [
-        "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v24.22.2/node-v24.22.2-linux-arm64.tgz",
-        "https://registry.npmmirror.com/-/binary/node/v24.22.2/node-v24.22.2-linux-arm64.tgz",
-        "https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tgz"
+        "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v24.22.2/node-v24.22.2-linux-arm64.tar.gz",
+        "https://registry.npmmirror.com/-/binary/node/v24.22.2/node-v24.22.2-linux-arm64.tar.gz",
+        "https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-arm64.tar.gz"
       ],
       "stripComponents": 1,
       "binDir": "bin",
@@ -62,8 +62,8 @@
       "size": 205995218,
       "sha256": "e3522e707fc7dbe2a72c30746b1e7068301a0213ecd213d4491f35a14eb55578",
       "urls": [
-        "https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/aarch64/linux/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.13_9.tgz",
-        "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.13_9.tgz"
+        "https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/aarch64/linux/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.13_9.tar.gz",
+        "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.13_9.tar.gz"
       ],
       "stripComponents": 1,
       "binDir": "bin",

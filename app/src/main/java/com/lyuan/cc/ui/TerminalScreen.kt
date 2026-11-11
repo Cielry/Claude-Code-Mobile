@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -47,7 +46,6 @@ import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import java.io.File
-import kotlin.math.abs
 
 data class SessionSpec(
     val conversationId: String,
@@ -114,43 +112,11 @@ private class TerminalClient(
     override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = false
     override fun onLongPress(event: MotionEvent): Boolean = false
     override fun readControlKey(): Boolean = handle.ctrlDown()
-    override fun readAltKey(): Boolean = false
+    override fun readAltKey(): Boolean = handle.altDown()
     override fun readShiftKey(): Boolean = handle.shiftDown()
     override fun readFnKey(): Boolean = false
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession?): Boolean = false
     override fun onEmulatorSet() {}
-}
-
-/** 从屏幕左缘向右滑动打开对话栏，与 Termux 的会话抽屉一致。 */
-private class EdgeSwipeDetector(
-    private val edgePx: Float,
-    private val onOpen: () -> Unit,
-) : View.OnTouchListener {
-    private var downX = 0f
-    private var downY = 0f
-    private var tracking = false
-
-    override fun onTouch(v: View, event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = event.x
-                downY = event.y
-                tracking = event.x <= edgePx
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (!tracking) return false
-                val dx = event.x - downX
-                val dy = event.y - downY
-                if (dx > edgePx && dx > abs(dy)) {
-                    tracking = false
-                    onOpen()
-                    return true
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> tracking = false
-        }
-        return false
-    }
 }
 
 @Composable
@@ -171,7 +137,7 @@ fun TerminalScreen(
             ) {
                 Text("还没有打开的对话", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "从屏幕左缘向右滑动，或点下方 ≡ 打开对话列表。",
+                    "点下方 ≡ 打开对话列表。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -181,7 +147,6 @@ fun TerminalScreen(
         return
     }
 
-    val edgePx = with(LocalDensity.current) { 28.dp.toPx() }
     val view = remember {
         TerminalView(context, null).apply {
             isFocusable = true
@@ -192,14 +157,10 @@ fun TerminalScreen(
     }
     var shiftDown by remember { mutableStateOf(false) }
     var ctrlDown by remember { mutableStateOf(false) }
+    var altDown by remember { mutableStateOf(false) }
     var handle by remember { mutableStateOf<TerminalSessions.Handle?>(null) }
     var statusText by remember { mutableStateOf("") }
     var finished by remember { mutableStateOf(false) }
-    var restartKey by remember { mutableStateOf(0) }
-
-    LaunchedEffect(view, edgePx) {
-        view.setOnTouchListener(EdgeSwipeDetector(edgePx, onOpenDrawer))
-    }
 
     // 进程已结束（Termux 显示 "[Process completed - press Enter]"）时，
     // 按 Enter 关闭这次对话，与 Termux 行为一致；对话记录仍保留在列表里。
@@ -224,7 +185,7 @@ fun TerminalScreen(
         }
     }
 
-    LaunchedEffect(spec.conversationId, TerminalSessions.specKey(spec), restartKey) {
+    LaunchedEffect(spec.conversationId, TerminalSessions.specKey(spec)) {
         TerminalSessions.detachView(view)
         finished = false
         statusText = ""
@@ -238,8 +199,12 @@ fun TerminalScreen(
         if (target == null) {
             val state = runtime.quickStatus()
             if (!state.ready) {
-                statusText = "运行时未就绪，请先在“设置”页点击“初始化”。"
-                return@LaunchedEffect
+                statusText = "正在准备运行环境…"
+                runtime.ensureInitialized { message -> statusText = message }
+                if (!runtime.quickStatus().ready) {
+                    statusText = "运行环境尚未就绪，请稍后重试或重启应用。"
+                    return@LaunchedEffect
+                }
             }
             val defaultDir = WorkspaceUtils.defaultDir(context)
             val workDir = spec.workspace.takeIf { WorkspaceUtils.isUsable(it) }
@@ -248,6 +213,8 @@ fun TerminalScreen(
                 Toast.makeText(context, "工作区不可访问，已改用默认工作区", Toast.LENGTH_LONG).show()
             }
             File(workDir).mkdirs()
+            // 新工作区默认信任，跳过 Claude 的首次确认提示。
+            runtime.ensureWorkspaceTrusted(workDir)
             ensurePrivateDir(runtime.tmpDir)
             // 保证新会话能读到随包的 settings.json / CLAUDE.md（配置版本变化时才重写）。
             runtime.ensureClaudeConfig()
@@ -285,22 +252,18 @@ fun TerminalScreen(
         active.view = view
         active.shiftDown = { shiftDown }
         active.ctrlDown = { ctrlDown }
+        active.altDown = { altDown }
         active.onTap = {
             view.requestFocus()
             showKeyboard(view, context)
         }
         active.onFinished = {
-            view.post {
-                finished = true
-                statusText = "会话已结束"
-            }
+            // 进程结束后由 Claude 显示“[Process completed - press Enter]”，
+            // 按回车即可退出；不再额外显示「会话已结束」提示。
+            view.post { finished = true }
         }
-        if (!session.isRunning()) {
-            finished = true
-            statusText = "会话已结束"
-        } else {
-            statusText = ""
-        }
+        if (!session.isRunning()) finished = true
+        statusText = ""
         active.viewClient?.let { view.setTerminalViewClient(it) }
         view.attachSession(session)
         view.requestFocus()
@@ -311,31 +274,23 @@ fun TerminalScreen(
         Box(modifier = Modifier.weight(1f)) {
             AndroidView(factory = { view }, modifier = Modifier.fillMaxSize())
             if (statusText.isNotEmpty()) {
-                Column(
+                Text(
+                    text = statusText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (finished) {
-                        TextButton(onClick = {
-                            TerminalSessions.close(spec.conversationId)
-                            restartKey += 1
-                        }) { Text("重启会话") }
-                    }
-                }
+                )
             }
         }
         KeyBar(
             shiftDown = shiftDown,
             ctrlDown = ctrlDown,
+            altDown = altDown,
             onShiftToggle = { shiftDown = !shiftDown },
             onCtrlToggle = { ctrlDown = !ctrlDown },
+            onAltToggle = { altDown = !altDown },
             onSend = { bytes ->
                 if (finished && bytes.size == 1 && bytes[0] == 0x0a.toByte()) {
                     TerminalSessions.close(spec.conversationId)
@@ -399,7 +354,11 @@ private fun buildEnv(
         "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1",
     )
     if (spec.baseUrl.isNotBlank()) env += "ANTHROPIC_BASE_URL=${spec.baseUrl}"
-    if (spec.token.isNotBlank()) env += "ANTHROPIC_AUTH_TOKEN=${spec.token}"
+    if (spec.token.isNotBlank()) {
+        // 只用 Anthropic 兼容网关通用的 Bearer 鉴权。不设置 ANTHROPIC_API_KEY，
+        // 避免 Claude Code 弹出「是否使用此 API Key」确认和双鉴权警告。
+        env += "ANTHROPIC_AUTH_TOKEN=${spec.token}"
+    }
     spec.effort?.takeIf { it.isNotBlank() }?.let { env += "CLAUDE_CODE_EFFORT_LEVEL=$it" }
     if (spec.modelId.isNotBlank()) {
         env += "ANTHROPIC_MODEL=${spec.modelId}"
@@ -415,13 +374,17 @@ private fun buildEnv(
 private fun KeyBar(
     shiftDown: Boolean,
     ctrlDown: Boolean,
+    altDown: Boolean,
     onShiftToggle: () -> Unit,
     onCtrlToggle: () -> Unit,
+    onAltToggle: () -> Unit,
     onSend: (ByteArray) -> Unit,
     onConversations: () -> Unit,
 ) {
     fun arrow(code: Char) {
-        val mod = 1 + (if (shiftDown) 1 else 0) + (if (ctrlDown) 4 else 0)
+        // xterm 修饰码：Shift=1、Alt=2、Ctrl=4，参数为 1 + 修饰位之和。
+        val mod = 1 + (if (shiftDown) 1 else 0) + (if (altDown) 2 else 0) +
+            (if (ctrlDown) 4 else 0)
         val seq = if (mod > 1) "\u001b[1;${mod}$code" else "\u001b[$code"
         onSend(seq.toByteArray())
     }
@@ -434,7 +397,12 @@ private fun KeyBar(
         Row(modifier = Modifier.fillMaxWidth()) {
             KeyButton("esc", Modifier.weight(1f)) { onSend(byteArrayOf(0x1b)) }
             KeyButton("≡", Modifier.weight(1f), onClick = onConversations)
-            KeyButton("home", Modifier.weight(1f)) { onSend("\u001b[H".toByteArray()) }
+            KeyButton(
+                if (altDown) "alt*" else "alt",
+                Modifier.weight(1f),
+                active = altDown,
+                onClick = onAltToggle,
+            )
             KeyButton("↑", Modifier.weight(1f)) { arrow('A') }
             KeyButton("end", Modifier.weight(1f)) { onSend("\u001b[F".toByteArray()) }
             KeyButton("换行", Modifier.weight(1f)) { onSend(byteArrayOf(0x0a)) }

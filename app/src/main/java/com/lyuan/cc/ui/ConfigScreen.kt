@@ -58,8 +58,16 @@ import com.lyuan.cc.data.SettingsRepository
 import com.lyuan.cc.data.Workspace
 import com.lyuan.cc.data.WorkspaceUtils
 import com.lyuan.cc.runtime.RuntimeManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -86,6 +94,7 @@ fun ConfigScreen(
     var allFilesGranted by remember { mutableStateOf(Permissions.hasAllFilesAccess(context)) }
     var editingClaudeMd by remember { mutableStateOf(false) }
     var claudeMdText by remember { mutableStateOf("") }
+    var pendingApiExport by remember { mutableStateOf("") }
 
     // 从系统设置返回后刷新「所有文件访问」状态。
     DisposableEffect(activity) {
@@ -128,6 +137,138 @@ fun ConfigScreen(
                     workspaceExpanded = true
                     allFilesGranted = Permissions.hasAllFilesAccess(context)
                 }
+            }
+        }
+    }
+
+    val apiExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(pendingApiExport.toByteArray(Charsets.UTF_8))
+                } ?: error("无法写入所选位置")
+            }
+            Toast.makeText(
+                context,
+                result.fold(
+                    onSuccess = { "API 配置已导出（含明文 Key）" },
+                    onFailure = { "导出失败：${it.message}" },
+                ),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    suspend fun buildApiExport(): String {
+        val array = JSONArray()
+        providers.forEach { provider ->
+            array.put(
+                JSONObject()
+                    .put("id", provider.id)
+                    .put("name", provider.name)
+                    .put("baseUrl", provider.baseUrl.replace("\\/", "/"))
+                    .put("apiKey", providerRepo.tokenOf(provider))
+                    .put("smallModelId", provider.smallModelId.orEmpty())
+                    .put("models", JSONArray(providerRepo.modelsOf(provider)))
+            )
+        }
+        val defaultProviderName = providers
+            .firstOrNull { it.id == defaultProviderId }
+            ?.name
+            .orEmpty()
+        return JSONObject()
+            .put("format", "ccm-api-config")
+            .put("version", 1)
+            .put(
+                "exportedAt",
+                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
+            )
+            .put("defaultProviderId", defaultProviderId)
+            .put("defaultProviderName", defaultProviderName)
+            .put("defaultModelId", defaultModelId)
+            .put("providers", array)
+            .toString(2)
+            // org.json 会把 "/" 转义成 "\/"，导出文件里恢复成正常 URL。
+            .replace("\\/", "/")
+    }
+
+    suspend fun importApiConfig(text: String): String {
+        val root = JSONObject(text)
+        val array = root.optJSONArray("providers") ?: error("文件格式不正确：缺少 providers")
+        val keys = providerRepo.observeProviders().first()
+            .map { it.name to it.baseUrl.replace("\\/", "/") }
+            .toMutableSet()
+        var added = 0
+        var skipped = 0
+        val failures = mutableListOf<String>()
+        for (index in 0 until array.length()) {
+            val obj = array.optJSONObject(index) ?: continue
+            val name = obj.optString("name").trim()
+            val baseUrl = obj.optString("baseUrl").trim().replace("\\/", "/")
+            if (name.isBlank() || baseUrl.isBlank() || !keys.add(name to baseUrl)) {
+                skipped++
+                continue
+            }
+            runCatching {
+                val models = obj.optJSONArray("models")?.let { list ->
+                    (0 until list.length()).mapNotNull { i ->
+                        list.optString(i).takeIf(String::isNotBlank)
+                    }
+                }.orEmpty()
+                val id = providerRepo.addProvider(
+                    name = name,
+                    baseUrl = baseUrl,
+                    apiKey = obj.optString("apiKey"),
+                    firstModelId = models.firstOrNull().orEmpty(),
+                    smallModelId = obj.optString("smallModelId")
+                        .takeIf { it.isNotBlank() },
+                )
+                models.drop(1).forEach { providerRepo.addModel(id, it) }
+                added++
+            }.onFailure { failures += "$name：${it.message}" }
+        }
+        val defaultName = root.optString("defaultProviderName").trim()
+        if (defaultName.isNotBlank()) {
+            val provider = providerRepo.observeProviders().first()
+                .firstOrNull { it.name == defaultName }
+            if (provider != null) {
+                settings.setDefaultProvider(provider.id)
+                val model = root.optString("defaultModelId").trim()
+                if (model.isNotBlank() && providerRepo.modelsOf(provider).contains(model)) {
+                    settings.setDefaultModel(model)
+                }
+            }
+        }
+        return buildString {
+            append("导入完成：新增 ").append(added).append("，跳过 ").append(skipped)
+            if (failures.isNotEmpty()) {
+                append("，失败 ").append(failures.size)
+                append('\n').append(failures.joinToString("\n"))
+            }
+        }
+    }
+
+    val apiImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val result = runCatching {
+                    val text = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)
+                            ?.bufferedReader()
+                            ?.use { it.readText() }
+                            ?: error("无法读取所选文件")
+                    }
+                    importApiConfig(text)
+                }
+                Toast.makeText(
+                    context,
+                    result.getOrElse { "导入失败：${it.message}" },
+                    Toast.LENGTH_LONG,
+                ).show()
             }
         }
     }
@@ -271,10 +412,32 @@ fun ConfigScreen(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("服务商", fontSize = 16.sp, fontWeight = FontWeight.Medium)
             Button(onClick = { showAddProvider = true }) { Text("添加服务商") }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { apiImportLauncher.launch(arrayOf("application/json", "text/plain")) }) {
+                Text("导入")
+            }
+            OutlinedButton(
+                enabled = providers.isNotEmpty(),
+                onClick = {
+                    scope.launch {
+                        pendingApiExport = buildApiExport()
+                        val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US)
+                            .format(Date())
+                        apiExportLauncher.launch("ccm-api-config-$stamp.json")
+                    }
+                },
+            ) { Text("导出") }
+        }
+        Text(
+            "导出 JSON 包含明文 API Key；导入会新增服务商，同名同地址的配置会跳过。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         if (providers.isEmpty()) {
             Text(

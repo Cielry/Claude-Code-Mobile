@@ -5,6 +5,7 @@ import com.lyuan.cc.security.CryptoManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,7 +20,10 @@ class ProviderRepository(context: Context) {
 
     private val db = AppDatabase.get(context)
 
-    fun observeProviders(): Flow<List<ProviderEntity>> = db.providerDao().observeAll()
+    fun observeProviders(): Flow<List<ProviderEntity>> =
+        db.providerDao().observeAll().map { list ->
+            list.map { it.copy(baseUrl = normalizeBaseUrl(it.baseUrl)) }
+        }
 
     suspend fun addProvider(
         name: String,
@@ -34,7 +38,7 @@ class ProviderRepository(context: Context) {
         val entity = ProviderEntity(
             id = id,
             name = name,
-            baseUrl = baseUrl,
+            baseUrl = normalizeBaseUrl(baseUrl),
             authType = "api_key",
             credentialAlias = id,
             credentialCipher = if (apiKey.isBlank()) null else CryptoManager(id).encrypt(apiKey),
@@ -64,7 +68,7 @@ class ProviderRepository(context: Context) {
             ProviderEntity(
                 id = id,
                 name = "默认服务商",
-                baseUrl = baseUrl,
+                baseUrl = normalizeBaseUrl(baseUrl),
                 authType = "api_key",
                 credentialAlias = LEGACY_ALIAS,
                 credentialCipher = cipher.takeIf { it.isNotBlank() },
@@ -95,7 +99,7 @@ class ProviderRepository(context: Context) {
         apiKey: String,
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         runCatching {
-            val base = baseUrl.trim().trimEnd('/')
+            val base = normalizeBaseUrl(baseUrl).trimEnd('/')
             if (base.isBlank()) error("Base URL 为空")
             val candidates = buildList {
                 add("$base/v1/models")
@@ -210,7 +214,7 @@ class ProviderRepository(context: Context) {
         db.providerDao().upsert(
             provider.copy(
                 name = name.trim(),
-                baseUrl = baseUrl.trim(),
+                baseUrl = normalizeBaseUrl(baseUrl),
                 credentialAlias = alias,
                 credentialCipher = cipher,
                 modelsJson = serializeModels(cleaned),
@@ -258,6 +262,9 @@ class ProviderRepository(context: Context) {
         models.forEach { array.put(it) }
         return array.toString()
     }
+
+    /** 兼容曾被 JSON 转义成 `https:\/\/` 的 Base URL。 */
+    private fun normalizeBaseUrl(url: String): String = url.trim().replace("\\/", "/")
 
     private companion object {
         /** v13 及更早版本 CryptoManager 的默认 Keystore 别名。 */

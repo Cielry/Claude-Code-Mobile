@@ -5,7 +5,13 @@ import android.content.res.AssetManager
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -35,7 +41,7 @@ class RuntimeManager(private val context: Context) {
         const val NATIVE_SHA256 = "1e119036a802d359ba5f9886428e031586e8796f7a858d5a8ee179ac7b8604f0"
         private const val NATIVE_ASSET = "runtime/claude-native"
         /** 随包 Claude 配置的版本；变化时重新写入一次，之后保留用户修改。 */
-        private const val CLAUDE_CONFIG_VERSION = "2026-11-06-3"
+        private const val CLAUDE_CONFIG_VERSION = "2026-11-09-1"
         private const val OLD_PREFIX = "/data/data/com.termux/files/usr/glibc"
         val LIB_NAMES = listOf(
             "libc.so.6", "libm.so.6", "libpthread.so.0", "libdl.so.2", "librt.so.1",
@@ -65,6 +71,50 @@ class RuntimeManager(private val context: Context) {
         val assetVersion: String?,
         val checks: List<Check>,
     )
+
+    data class InitState(
+        val preparing: Boolean = false,
+        val ready: Boolean? = null,
+        val message: String = "",
+    )
+
+    private val initMutex = Mutex()
+    private val _initState = MutableStateFlow(InitState())
+    val initState: StateFlow<InitState> = _initState.asStateFlow()
+
+    /**
+     * 首次启动自动准备运行时；已就绪时快速返回。并发调用串行化，
+     * 避免启动流程与终端页同时导入 claude-native。
+     */
+    suspend fun ensureInitialized(onProgress: (String) -> Unit = {}): Status =
+        initMutex.withLock {
+            val current = quickStatus()
+            if (current.ready) {
+                _initState.value = InitState(ready = true, message = "运行环境已就绪")
+                return@withLock current
+            }
+            _initState.value = InitState(preparing = true, message = "正在准备运行环境…")
+            val status = runCatching {
+                initialize { message ->
+                    _initState.value = InitState(preparing = true, message = message)
+                    onProgress(message)
+                }
+            }.getOrElse { throwable ->
+                if (throwable is CancellationException) throw throwable
+                _initState.value = InitState(
+                    preparing = false,
+                    ready = false,
+                    message = "准备失败：${throwable.message ?: throwable.javaClass.simpleName}",
+                )
+                return@withLock quickStatus()
+            }
+            _initState.value = if (status.ready) {
+                InitState(ready = true, message = "运行环境已就绪")
+            } else {
+                InitState(ready = false, message = "运行环境尚未就绪")
+            }
+            status
+        }
 
     suspend fun initialize(onProgress: (String) -> Unit = {}): Status = withContext(Dispatchers.IO) {
         ensureDirs()
@@ -132,6 +182,7 @@ class RuntimeManager(private val context: Context) {
     }
 
     /** 写入随包分发的 Claude Code 配置；配置版本变化时覆盖一次，之后保留用户修改。 */
+    @Synchronized
     fun ensureClaudeConfig() {
         val dir = File(homeDir, ".claude")
         val hooksDir = File(dir, "hooks")
@@ -154,6 +205,77 @@ class RuntimeManager(private val context: Context) {
         copy("claude/hooks/archive-conversation.js", File(hooksDir, "archive-conversation.js"))
         File(dir, "statusline.sh").setExecutable(true, false)
         if (overwrite) runCatching { marker.writeText(CLAUDE_CONFIG_VERSION) }
+        ensureSettingsTheme(dir)
+        ensureClaudeOnboarding()
+    }
+
+    /** 默认暗色；仅当设置里没有 theme 时补写，保留用户之后的选择。 */
+    private fun ensureSettingsTheme(configDir: File) {
+        runCatching {
+            val file = File(configDir, "settings.json")
+            if (!file.isFile) return@runCatching
+            val json = JSONObject(file.readText())
+            if (!json.has("theme") || json.optString("theme").isBlank()) {
+                json.put("theme", "dark")
+                file.writeText(json.toString(2))
+            }
+        }
+    }
+
+    /** 首次启动直接视为已完成引导，避免再次询问终端明暗主题。 */
+    private fun ensureClaudeOnboarding() {
+        runCatching {
+            homeDir.mkdirs()
+            val file = File(homeDir, ".claude.json")
+            val root = if (file.isFile && file.length() > 0) {
+                runCatching { JSONObject(file.readText()) }.getOrElse { JSONObject() }
+            } else {
+                JSONObject()
+            }
+            var changed = false
+            if (!root.optBoolean("hasCompletedOnboarding", false)) {
+                root.put("hasCompletedOnboarding", true)
+                changed = true
+            }
+            if (!root.has("lastOnboardingVersion")) {
+                root.put("lastOnboardingVersion", "2.1.301")
+                changed = true
+            }
+            if (changed) file.writeText(root.toString())
+        }
+    }
+
+    /** 工作区首次打开时直接写入信任标记，跳过 Claude 的确认提示。 */
+    @Synchronized
+    fun ensureWorkspaceTrusted(workspace: String) {
+        val path = workspace.trim()
+        if (path.isBlank()) return
+        runCatching {
+            homeDir.mkdirs()
+            val file = File(homeDir, ".claude.json")
+            val root = if (file.isFile && file.length() > 0) {
+                runCatching { JSONObject(file.readText()) }.getOrElse { JSONObject() }
+            } else {
+                JSONObject()
+            }
+            val projects = root.optJSONObject("projects") ?: JSONObject().also {
+                root.put("projects", it)
+            }
+            val key = File(path).absolutePath
+            val entry = projects.optJSONObject(key) ?: JSONObject().also {
+                projects.put(key, it)
+            }
+            var changed = false
+            if (!entry.optBoolean("hasTrustDialogAccepted", false)) {
+                entry.put("hasTrustDialogAccepted", true)
+                changed = true
+            }
+            if (!entry.has("hasClaudeMdExternalIncludesApproved")) {
+                entry.put("hasClaudeMdExternalIncludesApproved", true)
+                changed = true
+            }
+            if (changed) file.writeText(root.toString())
+        }
     }
 
     fun quickStatus(): Status {

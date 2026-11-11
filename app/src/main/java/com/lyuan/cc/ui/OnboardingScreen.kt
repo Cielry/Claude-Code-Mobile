@@ -41,7 +41,7 @@ fun OnboardingScreen(onStart: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            text = "首次使用请到「设置」页点击「初始化」，会自动导入运行环境和 Claude Code。",
+            text = "首次启动会自动准备运行环境（导入约 267 MB 的 Claude Code），不需要手动初始化。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

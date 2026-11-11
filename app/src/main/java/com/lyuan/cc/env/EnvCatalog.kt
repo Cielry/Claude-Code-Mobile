@@ -7,8 +7,12 @@ import org.json.JSONObject
 data class TermuxPackage(
     val name: String,
     val version: String,
-    /** Termux 设备上标记为自动安装（依赖）的包。 */
+    /** 基础依赖，安装其它包时自动带入。 */
     val automatic: Boolean,
+    /** 建议优先安装的通用包。 */
+    val recommended: Boolean,
+    /** 推荐说明；非推荐包为空。 */
+    val description: String,
 )
 
 /** 环境包目录中的一个可安装包。 */
@@ -64,6 +68,8 @@ object EnvCatalog {
                     name = name,
                     version = obj.optString("version"),
                     automatic = obj.optBoolean("automatic", false),
+                    recommended = obj.optBoolean("recommended", false),
+                    description = obj.optString("description"),
                 )
             }
         }

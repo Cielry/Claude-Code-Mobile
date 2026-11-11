@@ -4,832 +4,911 @@
     {
       "name": "abseil-cpp",
       "version": "20260526.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "android-tools",
       "version": "37.0.0-2",
-      "automatic": false
-    },
-    {
-      "name": "apt",
-      "version": "2.8.1-2",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "attr",
       "version": "2.6.0",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "bzip2",
       "version": "1.0.8-8",
-      "automatic": false
+      "automatic": false,
+      "recommended": true,
+      "description": "补 .bz2 压缩/解压；内置只有 gzip / xz / zstd / brotli"
     },
     {
       "name": "c-ares",
       "version": "1.34.8",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "ca-certificates",
       "version": "1:2026.09.25",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "clang",
       "version": "21.1.8-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "cmake",
       "version": "4.4.4",
-      "automatic": false
-    },
-    {
-      "name": "command-not-found",
-      "version": "3.5.0-14",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "dash",
       "version": "0.5.13.5",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "debianutils",
       "version": "5.24",
-      "automatic": false
+      "automatic": false,
+      "recommended": true,
+      "description": "提供 which、tempfile 等脚本常用命令"
     },
     {
       "name": "djvulibre",
       "version": "3.5.30",
-      "automatic": true
-    },
-    {
-      "name": "dpkg",
-      "version": "1.22.6-5",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "fftw",
       "version": "3.3.11",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "fmt",
       "version": "1:11.2.0-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "fontconfig",
       "version": "2.18.3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "freetype",
       "version": "2.14.3",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "fribidi",
       "version": "1.0.17",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "gdbm",
       "version": "1.26-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "gdk-pixbuf",
       "version": "2.44.8",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "ghostscript",
       "version": "10.07.1-2",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "giflib",
       "version": "6.1.3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "glib",
       "version": "2.90.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "gpgv",
       "version": "2.5.24",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "graphviz",
       "version": "16.1.0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "harfbuzz",
       "version": "14.6.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "highway",
       "version": "1.4.0-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "imagemagick",
       "version": "7.1.2.32",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "imath",
       "version": "3.2.3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "inetutils",
       "version": "2.8-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "iproute2",
       "version": "7.2.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "jbig2dec",
       "version": "0.20-2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "jsoncpp",
       "version": "1.9.8",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "krb5",
       "version": "1.22.2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "ldns",
       "version": "1.9.2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "leptonica",
       "version": "1.87.0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libacl",
       "version": "2.4.0",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libandroid-execinfo",
       "version": "0.1-3",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libandroid-glob",
       "version": "0.6-3",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libandroid-posix-semaphore",
       "version": "0.1-4",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libandroid-selinux",
       "version": "14.0.0.11-1",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libandroid-shmem",
       "version": "0.7",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libandroid-spawn",
       "version": "0.3",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libandroid-support",
       "version": "29-1",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libaom",
       "version": "3.15.1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libarchive",
       "version": "3.8.9",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libassuan",
       "version": "3.0.2-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libavif",
       "version": "1.4.2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libbz2",
       "version": "1.0.8-8",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libc++",
       "version": "30",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libcairo",
       "version": "1.18.6",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libcap-ng",
       "version": "2:0.9.6",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libcompiler-rt",
       "version": "21.1.8-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libcrypt",
       "version": "0.2-6",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libcurl",
       "version": "8.22.0",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libdav1d",
       "version": "1.5.4",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libdb",
       "version": "18.1.40-6",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libde265",
       "version": "1.1.3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libedit",
       "version": "20260512-3.1-0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libevent",
       "version": "2.1.13",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libexpat",
       "version": "2.9.0",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libffi",
       "version": "3.8.0",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libgcrypt",
       "version": "1.12.4",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libgd",
       "version": "1:2.3.3-7",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libgmp",
       "version": "6.3.0-2",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libgnutls",
       "version": "3.8.13-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libgpg-error",
       "version": "1.61",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libgraphite",
       "version": "1.3.15",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libgts",
       "version": "0.7.6-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libheif",
       "version": "1.23.6",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libiconv",
       "version": "1.19",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libicu",
       "version": "78.3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libidn",
       "version": "1.44",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libidn2",
       "version": "2.3.8-1",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libimagequant",
       "version": "4.4.1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libjasper",
       "version": "4.2.9-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libjpeg-turbo",
       "version": "3.2.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libjxl",
       "version": "0.12.0-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libllvm",
       "version": "21.1.8-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "liblqr",
       "version": "0.4.3-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libltdl",
       "version": "2.6.2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "liblz4",
       "version": "1.10.0-1",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "liblzma",
       "version": "5.8.4",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "liblzo",
       "version": "2.10-5",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libmagic",
       "version": "5.48-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libmd",
       "version": "1.3.0",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libmpfr",
       "version": "4.2.1-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libnettle",
       "version": "4.0+really3.10.2",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libnghttp2",
       "version": "1.70.0",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libnghttp3",
       "version": "1.18.0",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libngtcp2",
       "version": "1.25.0",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libnpth",
       "version": "1.8",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libpcap",
       "version": "1.11.0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libpixman",
       "version": "0.46.4-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libpng",
       "version": "1.6.59",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libprotobuf",
       "version": "2:35.1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libraqm",
       "version": "0.11.0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "librav1e",
       "version": "0.8.1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libraw",
       "version": "0.22.2-1",
-      "automatic": false
-    },
-    {
-      "name": "libresolv-wrapper",
-      "version": "1.1.8",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "librsvg",
       "version": "2.63.2",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libsmartcols",
       "version": "2.42.4",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libsqlite",
       "version": "3.53.4",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libssh2",
       "version": "1.11.1-2",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libtalloc",
       "version": "2.5.0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libtasn1",
       "version": "4.21.0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libtiff",
       "version": "4.7.2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libtirpc",
       "version": "1.3.8",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libunbound",
       "version": "1.26.1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libunistring",
       "version": "1.4.2",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "libuv",
       "version": "1.53.0",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libwebp",
       "version": "1.6.0-rc1-0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libx11",
       "version": "1.8.13-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libx264",
       "version": "1:0.164.3191-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libx265",
       "version": "4.3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxau",
       "version": "1.0.12-2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxcb",
       "version": "1.17.0-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxdmcp",
       "version": "1.1.5-2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxext",
       "version": "1.3.7",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxft",
       "version": "2.3.9-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxml2",
       "version": "2.15.4-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxrender",
       "version": "0.9.12-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libxslt",
       "version": "1.1.45-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "libzip",
       "version": "1.11.4-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "littlecms",
       "version": "2.19.1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "lld",
       "version": "21.1.8-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "llvm",
       "version": "21.1.8-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "lua54",
       "version": "5.4.9",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "make",
       "version": "4.4.1-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "ncurses-ui-libs",
       "version": "6.6.20260307+really6.5.20250830",
-      "automatic": true
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "ndk-sysroot",
       "version": "30",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "net-tools",
       "version": "2.10.0-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "nmap",
       "version": "7.991",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "npm",
       "version": "11.20.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "oniguruma",
       "version": "6.9.10-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "openexr",
       "version": "3.4.4",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "openjpeg",
       "version": "2.5.4",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "openssh-sftp-server",
       "version": "10.6p1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "openssl",
       "version": "1:3.6.5",
-      "automatic": false
+      "automatic": false,
+      "recommended": true,
+      "description": "TLS、证书与密钥命令行，也是常用依赖"
     },
     {
       "name": "p11-kit",
       "version": "0.26.5",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "pango",
       "version": "1.58.2",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "pcre2",
       "version": "10.49",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "pkg-config",
       "version": "0.29.2-3",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "proot",
       "version": "5.1.107.96",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "proot-distro",
       "version": "5.9.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "python-ensurepip-wheels",
       "version": "3.14.6-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "python-pillow",
       "version": "12.3.0",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "python-pip",
       "version": "26.2.1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "readline",
       "version": "8.3.6",
-      "automatic": false
-    },
-    {
-      "name": "resolv-conf",
-      "version": "1.3",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "rhash",
       "version": "1.4.6-1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "svt-av1",
       "version": "4.2.0",
-      "automatic": false
-    },
-    {
-      "name": "termux-am",
-      "version": "0.8.1",
-      "automatic": false
-    },
-    {
-      "name": "termux-am-socket",
-      "version": "1.5.0-1",
-      "automatic": false
-    },
-    {
-      "name": "termux-auth",
-      "version": "1.5.0-1",
-      "automatic": true
-    },
-    {
-      "name": "termux-core",
-      "version": "0.4.0-1",
-      "automatic": false
-    },
-    {
-      "name": "termux-exec",
-      "version": "1:2.5.0-1",
-      "automatic": false
-    },
-    {
-      "name": "termux-keyring",
-      "version": "3.14",
-      "automatic": false
-    },
-    {
-      "name": "termux-licenses",
-      "version": "2.2",
-      "automatic": false
-    },
-    {
-      "name": "termux-tools",
-      "version": "1.46.0+really1.45.0-1",
-      "automatic": false
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "ttf-dejavu",
       "version": "2.37-8",
-      "automatic": true
-    },
-    {
-      "name": "xorg-util-macros",
-      "version": "1.20.2",
-      "automatic": true
-    },
-    {
-      "name": "xorgproto",
-      "version": "2026.1",
-      "automatic": true
+      "automatic": false,
+      "recommended": false
     },
     {
       "name": "xxhash",
       "version": "0.8.4",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     },
     {
       "name": "zlib",
       "version": "1.3.2",
-      "automatic": false
+      "automatic": true,
+      "recommended": false
     }
   ]
 }

@@ -156,12 +156,12 @@ fun PermissionGate(content: @Composable () -> Unit) {
     val current = snapshot
     when {
         current == null -> Box(
-            modifier = Modifier.fillMaxSize().background(Color.Black),
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = "正在检查权限…",
-                color = Color.White.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 fontSize = 12.sp,
             )
         }
@@ -169,7 +169,11 @@ fun PermissionGate(content: @Composable () -> Unit) {
         current.allGranted || skipped -> content()
 
         else -> {
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+            )
             AlertDialog(
                 onDismissRequest = {},
                 properties = androidx.compose.ui.window.DialogProperties(

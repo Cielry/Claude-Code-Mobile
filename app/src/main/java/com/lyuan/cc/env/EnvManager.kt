@@ -4,12 +4,17 @@ import android.content.Context
 import android.system.Os
 import com.lyuan.cc.CcmOutput
 import com.lyuan.cc.runtime.RuntimeManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -33,6 +38,34 @@ data class ProbeResult(
 data class CheckResult(val ok: Boolean, val output: String)
 
 data class CustomInstallResult(val id: String, val commands: Int)
+
+/** 一键安装目标：内置目录包或软件源包。 */
+data class BatchTarget(
+    val id: String,
+    val name: String,
+    val version: String,
+    val catalog: CatalogPackage?,
+)
+
+data class BatchFailure(
+    val name: String,
+    val version: String,
+    val stage: String,
+    val message: String,
+)
+
+data class BatchInstallState(
+    val running: Boolean = false,
+    val total: Int = 0,
+    val done: Int = 0,
+    val succeeded: Int = 0,
+    val skipped: Int = 0,
+    val failed: Int = 0,
+    val current: String = "",
+    val message: String = "",
+    val reportPath: String = "",
+    val failures: List<BatchFailure> = emptyList(),
+)
 
 private data class RegistryCommand(
     val name: String,
@@ -77,7 +110,167 @@ class EnvManager(private val context: Context) {
     private val _probe = MutableStateFlow<ProbeResult?>(null)
     val probe: StateFlow<ProbeResult?> = _probe.asStateFlow()
 
+    private val batchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var batchJob: Job? = null
+    private val _batchState = MutableStateFlow(BatchInstallState())
+    val batchState: StateFlow<BatchInstallState> = _batchState.asStateFlow()
+
     fun packageById(id: String): CatalogPackage? = catalog.firstOrNull { it.id == id }
+
+    /**
+     * 一键安装：按顺序安装给定包，已安装的由调用方过滤。失败不中断，
+     * 结束后把失败明细写入自定义工作区。
+     */
+    fun startBatchInstall(
+        targets: List<BatchTarget>,
+        mirror: AptMirror,
+        workspace: String,
+        skipped: Int,
+    ) {
+        if (batchJob?.isActive == true || targets.isEmpty()) return
+        val targetDir = workspace.trim()
+        _batchState.value = BatchInstallState(
+            running = true,
+            total = targets.size,
+            skipped = skipped,
+            message = "准备一键安装…",
+        )
+        batchJob = batchScope.launch {
+            var succeeded = 0
+            var skippedCount = skipped
+            val failures = mutableListOf<BatchFailure>()
+            try {
+                for ((index, target) in targets.withIndex()) {
+                    _batchState.value = _batchState.value.copy(
+                        done = index,
+                        current = target.name,
+                        message = "正在安装 ${target.name}（${index + 1}/${targets.size}）",
+                    )
+                    // 前面的包可能已经把它作为依赖装好，直接跳过，不算失败。
+                    if (repo.find(target.id) != null) {
+                        skippedCount++
+                        _batchState.value = _batchState.value.copy(
+                            done = index + 1,
+                            skipped = skippedCount,
+                        )
+                        continue
+                    }
+                    var stage = ""
+                    val catalogPkg = target.catalog
+                    val result = runCatching {
+                        if (catalogPkg != null) {
+                            install(
+                                catalogPkg,
+                                onProgress = { _, _ -> },
+                                onStage = { stage = it },
+                            ).getOrThrow()
+                        } else {
+                            installCustom(
+                                target.id,
+                                mirror,
+                                onProgress = { _, _ -> },
+                                onStage = { stage = it },
+                            ).getOrThrow()
+                        }
+                    }
+                    if (result.isSuccess) {
+                        succeeded++
+                    } else {
+                        val error = result.exceptionOrNull()
+                        if (error is CancellationException) throw error
+                        failures += BatchFailure(
+                            name = target.name,
+                            version = target.version,
+                            stage = stage.ifBlank { "安装" },
+                            message = error?.message
+                                ?: error?.javaClass?.simpleName
+                                ?: "未知错误",
+                        )
+                    }
+                    _batchState.value = _batchState.value.copy(
+                        done = index + 1,
+                        succeeded = succeeded,
+                        failed = failures.size,
+                    )
+                }
+                val report = if (failures.isNotEmpty()) {
+                    writeBatchReport(
+                        targetDir,
+                        mirror,
+                        targets.size + skipped,
+                        skippedCount,
+                        succeeded,
+                        failures,
+                    )
+                } else {
+                    ""
+                }
+                _batchState.value = BatchInstallState(
+                    running = false,
+                    total = targets.size,
+                    done = targets.size,
+                    succeeded = succeeded,
+                    skipped = skippedCount,
+                    failed = failures.size,
+                    message = buildString {
+                        append("一键安装完成：成功 ").append(succeeded)
+                        if (skippedCount > 0) append("，跳过 ").append(skippedCount)
+                        if (failures.isNotEmpty()) append("，失败 ").append(failures.size)
+                        if (report.isNotBlank()) append("。错误报告：").append(report)
+                    },
+                    reportPath = report,
+                    failures = failures,
+                )
+            } catch (cancelled: CancellationException) {
+                _batchState.value = _batchState.value.copy(
+                    running = false,
+                    current = "",
+                    message = "一键安装已停止（完成 ${_batchState.value.done}/${targets.size}）",
+                )
+                throw cancelled
+            } finally {
+                batchJob = null
+            }
+        }
+    }
+
+    fun cancelBatchInstall() {
+        batchJob?.cancel()
+    }
+
+    private fun writeBatchReport(
+        workspace: String,
+        mirror: AptMirror,
+        total: Int,
+        skipped: Int,
+        succeeded: Int,
+        failures: List<BatchFailure>,
+    ): String = runCatching {
+        val dir = File(workspace)
+        if (!dir.isDirectory) dir.mkdirs()
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val file = File(dir, "ccm-install-report-$stamp.txt")
+        val now = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        val text = buildString {
+            appendLine("# CCM 环境一键安装报告")
+            appendLine("时间：$now")
+            appendLine("工作区：${dir.absolutePath}")
+            appendLine("镜像：${mirror.label} ${mirror.baseUrl}")
+            appendLine(
+                "总数：$total  已安装跳过：$skipped  成功：$succeeded  " +
+                    "失败：${failures.size}"
+            )
+            appendLine()
+            appendLine("## 失败明细")
+            failures.forEachIndexed { index, failure ->
+                appendLine("${index + 1}. ${failure.name} ${failure.version}")
+                appendLine("   阶段：${failure.stage}")
+                appendLine("   错误：${failure.message}")
+            }
+        }
+        file.writeText(text)
+        file.absolutePath
+    }.getOrDefault("")
 
     fun ensureDirs() {
         listOf(
@@ -93,9 +286,9 @@ class EnvManager(private val context: Context) {
         // APK 升级会改变 nativeLibraryDir，旧的命令链接需要重新指向当前启动器。
         runCatching { repairCommandLinks() }
         // targetSdk 36 起，应用私有目录中的静态 ELF 无法直接执行；已下线的包自动清理。
-        // bzip2 自 M10 起不再内置，升级后一并清理旧安装。
+        // bzip2 / make 现在可从软件源列表安装（CH-0046），不能再按旧内置包清理。
         runCatching {
-            listOf("go", "make", "sqlite3", "bzip2").forEach { id ->
+            listOf("go", "sqlite3").forEach { id ->
                 if (repo.find(id) != null) uninstall(id)
             }
         }
@@ -144,7 +337,7 @@ class EnvManager(private val context: Context) {
                 ProbeResult(
                     ok = false,
                     runtimeReady = false,
-                    message = "运行时未就绪，请先在“设置”中完成初始化",
+                    message = "运行时尚未就绪，正在自动准备",
                     output = "",
                     timestamp = System.currentTimeMillis(),
                 )
@@ -445,6 +638,10 @@ class EnvManager(private val context: Context) {
                 resolving.remove(dep)
                 mirrorDeps += entry
             }
+            // Termux 的 bionic 程序普遍依赖 libandroid-support；部分包未在索引里声明。
+            if (name != "libandroid-support" && index.get("libandroid-support") != null) {
+                visit("libandroid-support")
+            }
             target.depends.forEach { visit(it) }
 
             for (pkg in catalogDeps) {
@@ -458,7 +655,6 @@ class EnvManager(private val context: Context) {
                     dep,
                     mirror,
                     dependencyLibs = libDirsOf(visited),
-                    requireCommands = false,
                     automatic = true,
                     onProgress = { _, _ -> },
                     onStage = onStage,
@@ -470,14 +666,15 @@ class EnvManager(private val context: Context) {
                 target,
                 mirror,
                 dependencyLibs = libDirsOf(visited),
-                requireCommands = true,
                 automatic = false,
                 onProgress = onProgress,
                 onStage = onStage,
             )
 
             onStage("自检中…")
-            val check = checkCommandLoose(record.commands.first())
+            val check = record.commands.firstOrNull()
+                ?.let { checkCommandLoose(it) }
+                ?: CheckResult(true, "库/数据包，无命令")
             repo.upsert(
                 record.copy(
                     status = if (check.ok) "ok" else "failed",
@@ -546,14 +743,13 @@ class EnvManager(private val context: Context) {
         pkg: AptPackage,
         mirror: AptMirror,
         dependencyLibs: List<File>,
-        requireCommands: Boolean,
         automatic: Boolean,
         onProgress: suspend (Long, Long) -> Unit,
         onStage: suspend (String) -> Unit,
     ): InstalledPackage = lockFor(pkg.name).withLock {
         // 并发安装共享依赖时，后到者直接复用已安装的包。
         repo.find(pkg.name) ?: installMirrorPackageLocked(
-            pkg, mirror, dependencyLibs, requireCommands, automatic, onProgress, onStage,
+            pkg, mirror, dependencyLibs, automatic, onProgress, onStage,
         )
     }
 
@@ -561,7 +757,6 @@ class EnvManager(private val context: Context) {
         pkg: AptPackage,
         mirror: AptMirror,
         dependencyLibs: List<File>,
-        requireCommands: Boolean,
         automatic: Boolean,
         onProgress: suspend (Long, Long) -> Unit,
         onStage: suspend (String) -> Unit,
@@ -602,12 +797,8 @@ class EnvManager(private val context: Context) {
             throw t
         }
 
+        // 库/数据/脚本包可能没有可注册的 ELF 命令；仍然保留文件供其它包链接使用。
         val commands = scanBinCommands(staging)
-        if (requireCommands && commands.isEmpty()) {
-            staging.deleteRecursively()
-            deb.delete()
-            error("「${pkg.name}」只包含脚本或数据，暂不支持")
-        }
 
         val finalDir = File(pkgRoot, version)
         finalDir.deleteRecursively()
@@ -622,6 +813,19 @@ class EnvManager(private val context: Context) {
             if (it.isDirectory) libDirs += it
         }
         dependencyLibs.forEach { if (it.isDirectory) libDirs += it }
+        // 应用自带兼容库（zlib / OpenSSL / libstdc++ 等）。
+        if (baseDir.isDirectory) libDirs += baseDir
+        // Termux 部分包没有在依赖元数据里声明全部共享库；统一把已安装包的
+        // lib/lib64 加入搜索路径，避免 libandroid-support / readline 等找不到。
+        runCatching {
+            repo.installed.first().forEach { record ->
+                val pkgDir = File(pkgsDir, "${record.id}/${safeVersion(record.version)}")
+                listOf("lib", "lib64").forEach { sub ->
+                    val dir = File(pkgDir, sub)
+                    if (dir.isDirectory) libDirs += dir
+                }
+            }
+        }
         val libs = libDirs.joinToString(":") {
             root.toPath().relativize(it.toPath()).toString()
         }
@@ -723,7 +927,21 @@ class EnvManager(private val context: Context) {
             return@withContext CheckResult(false, "未安装")
         }
         val command = record.commands.firstOrNull()
-        if (command == null) return@withContext CheckResult(false, "没有注册命令")
+        if (command == null) {
+            val dir = File(pkgsDir, "${record.id}/${safeVersion(record.version)}")
+            val result = CheckResult(
+                dir.isDirectory,
+                if (dir.isDirectory) "库/数据包，无命令" else "安装目录缺失",
+            )
+            repo.upsert(
+                record.copy(
+                    status = if (result.ok) "ok" else "failed",
+                    output = result.output,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            )
+            return@withContext result
+        }
         val result = if (pkg == null) {
             checkCommandLoose(command)
         } else {

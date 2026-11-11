@@ -18,6 +18,7 @@ object TerminalSessions {
         @Volatile var onFinished: () -> Unit = {}
         @Volatile var shiftDown: () -> Boolean = { false }
         @Volatile var ctrlDown: () -> Boolean = { false }
+        @Volatile var altDown: () -> Boolean = { false }
     }
 
     private val handles = LinkedHashMap<String, Handle>()

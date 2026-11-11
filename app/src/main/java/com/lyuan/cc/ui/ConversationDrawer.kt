@@ -41,8 +41,8 @@ fun ConversationDrawerContent(
 ) {
     ModalDrawerSheet(
         modifier = Modifier.fillMaxHeight(),
-        drawerContainerColor = Color.Black,
-        drawerContentColor = Color.White,
+        drawerContainerColor = MaterialTheme.colorScheme.background,
+        drawerContentColor = MaterialTheme.colorScheme.onBackground,
     ) {
         Row(
             modifier = Modifier
@@ -52,7 +52,9 @@ fun ConversationDrawerContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("对话", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            TextButton(onClick = onClose) { Text("关闭", color = Color.White) }
+            TextButton(onClick = onClose) {
+                Text("关闭", color = MaterialTheme.colorScheme.onBackground)
+            }
         }
         Button(
             onClick = onNew,
@@ -64,17 +66,20 @@ fun ConversationDrawerContent(
             text = "长按对话可删除",
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelSmall,
-            color = Color.Gray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color.DarkGray)
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 12.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
 
         if (conversations.isEmpty()) {
             Text(
                 "还没有对话",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.Gray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -85,7 +90,10 @@ fun ConversationDrawerContent(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(if (active) Color(0xFF2A1A14) else Color.Transparent)
+                        .background(
+                            if (active) Color(0xFFD97757).copy(alpha = 0.18f)
+                            else Color.Transparent
+                        )
                         .combinedClickable(
                             onClick = { onSelect(conversation) },
                             onLongClick = { onDelete(conversation) },
@@ -97,13 +105,14 @@ fun ConversationDrawerContent(
                         text = conversation.title.ifBlank { "未命名对话" },
                         fontSize = 15.sp,
                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (active) Color(0xFFD97757) else Color.White,
+                        color = if (active) Color(0xFFD97757)
+                        else MaterialTheme.colorScheme.onBackground,
                     )
                     Text(
                         text = (conversation.workspacePath ?: "默认工作区") +
                             "  ·  " + formatter.format(Date(conversation.updatedAt)),
                         fontSize = 11.sp,
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

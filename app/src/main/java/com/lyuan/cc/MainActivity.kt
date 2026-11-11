@@ -62,8 +62,8 @@ import com.lyuan.cc.ui.GlassNavBar
 import com.lyuan.cc.ui.NewConversationDialog
 import com.lyuan.cc.ui.OnboardingScreen
 import com.lyuan.cc.ui.PermissionGate
-import com.lyuan.cc.ui.RuntimeScreen
 import com.lyuan.cc.ui.SessionSpec
+import com.lyuan.cc.ui.SettingsScreen
 import com.lyuan.cc.ui.TerminalScreen
 import com.lyuan.cc.ui.TerminalSessions
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +87,10 @@ class MainActivity : ComponentActivity() {
             runCatching { providerRepo.importLegacyIfNeeded(settings) }
             runCatching { settings.migrateLegacyWorkspace() }
             runCatching { envManager.initialize() }
+            // 首次启动自动准备运行时（导入 claude-native），无需进入设置页手动初始化。
+            runCatching { runtime.ensureInitialized() }
+            // 运行时就绪后重新探测，环境页不必手动点「环境检测」。
+            runCatching { envManager.runProbe() }
             // 启动时同步随包 Claude 配置（含 settings.json / CLAUDE.md / 脚本）。
             runCatching { runtime.ensureClaudeConfig() }
         }
@@ -160,6 +164,9 @@ private fun MainScreen(
     var defaultModelId by remember { mutableStateOf("") }
     var workspaces by remember { mutableStateOf<List<Workspace>>(emptyList()) }
     var selectedWorkspaceId by remember { mutableStateOf("") }
+    val startTipShown by produceState<Boolean?>(initialValue = null) {
+        settings.startTipShown.collect { value = it }
+    }
 
     LaunchedEffect(Unit) {
         db.conversationDao().observeActive().collect { conversations = it }
@@ -225,6 +232,7 @@ private fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = false,
         drawerContent = {
             ConversationDrawerContent(
                 conversations = conversations,
@@ -279,6 +287,10 @@ private fun MainScreen(
                         1 -> EnvironmentScreen(
                             manager = envManager,
                             installed = installedEnv,
+                            customWorkspace = workspaces
+                                .firstOrNull { it.id == selectedWorkspaceId }
+                                ?.path,
+                            onOpenConfig = { selected = 2 },
                         )
                         2 -> ConfigScreen(
                             settings = settings,
@@ -290,7 +302,7 @@ private fun MainScreen(
                             defaultProviderId = defaultProviderId,
                             defaultModelId = defaultModelId,
                         )
-                        3 -> RuntimeScreen(runtime)
+                        3 -> SettingsScreen(runtime)
                     }
                 }
             }
@@ -364,6 +376,26 @@ private fun MainScreen(
                     drawerState.close()
                     selected = 0
                 }
+            },
+        )
+    }
+
+    // 第一次进入主界面：提示先添加模型和工作区。
+    if (startTipShown == false) {
+        AlertDialog(
+            onDismissRequest = { scope.launch { settings.setStartTipShown(true) } },
+            title = { Text("开始使用前") },
+            text = { Text("请先添加模型和工作区，再开始对话。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { settings.setStartTipShown(true) }
+                    selected = 2
+                }) { Text("去配置") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    scope.launch { settings.setStartTipShown(true) }
+                }) { Text("知道了") }
             },
         )
     }

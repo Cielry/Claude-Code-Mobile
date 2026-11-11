@@ -18,6 +18,7 @@ class SettingsRepository(private val context: Context) {
 
     private object Keys {
         val onboardingCompleted = booleanPreferencesKey("onboarding_completed")
+        val startTipShown = booleanPreferencesKey("start_tip_shown")
         val defaultProviderId = stringPreferencesKey("default_provider_id")
         val defaultModelId = stringPreferencesKey("default_model_id")
         val providerBaseUrl = stringPreferencesKey("provider_base_url")
@@ -34,6 +35,10 @@ class SettingsRepository(private val context: Context) {
 
     val onboardingCompleted: Flow<Boolean> =
         context.dataStore.data.map { it[Keys.onboardingCompleted] ?: false }
+
+    /** 首次进入主界面时是否已经展示「先添加模型和工作区」提示。 */
+    val startTipShown: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.startTipShown] ?: false }
 
     val providerBaseUrl: Flow<String> =
         context.dataStore.data.map { it[Keys.providerBaseUrl] ?: "" }
@@ -192,6 +197,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setOnboardingCompleted(completed: Boolean) {
         context.dataStore.edit { it[Keys.onboardingCompleted] = completed }
+    }
+
+    suspend fun setStartTipShown(shown: Boolean) {
+        context.dataStore.edit { it[Keys.startTipShown] = shown }
     }
 
     suspend fun setDefaultProvider(id: String?) {
