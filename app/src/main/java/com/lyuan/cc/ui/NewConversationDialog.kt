@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lyuan.cc.data.ProviderEntity
+import com.lyuan.cc.data.ProviderProtocol
 import com.lyuan.cc.data.Workspace
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -119,8 +120,10 @@ fun NewConversationDialog(
                             providerId = provider.id
                             modelId = modelsOf(provider).firstOrNull() ?: ""
                         }) {
+                            val protocol = ProviderProtocol.fromWire(provider.protocol)
                             Text(
-                                (if (provider.id == providerId) "• " else "") + provider.name
+                                (if (provider.id == providerId) "• " else "") + provider.name +
+                                    if (protocol == ProviderProtocol.OPENAI) " · OpenAI" else ""
                             )
                         }
                     }

@@ -53,6 +53,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.lyuan.cc.data.Permissions
 import com.lyuan.cc.data.ProviderEntity
+import com.lyuan.cc.data.ProviderProtocol
 import com.lyuan.cc.data.ProviderRepository
 import com.lyuan.cc.data.SettingsRepository
 import com.lyuan.cc.data.Workspace
@@ -85,7 +86,9 @@ fun ConfigScreen(
     val scope = rememberCoroutineScope()
     val activity = remember(context) { context.findActivity() }
 
+    var showProtocolPicker by remember { mutableStateOf(false) }
     var showAddProvider by remember { mutableStateOf(false) }
+    var addProtocol by rememberSaveable { mutableStateOf(ProviderProtocol.ANTHROPIC.wire) }
     var expandedProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     var editingProviderId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteProviderTarget by remember { mutableStateOf<ProviderEntity?>(null) }
@@ -169,6 +172,7 @@ fun ConfigScreen(
                     .put("id", provider.id)
                     .put("name", provider.name)
                     .put("baseUrl", provider.baseUrl.replace("\\/", "/"))
+                    .put("protocol", ProviderProtocol.fromWire(provider.protocol).wire)
                     .put("apiKey", providerRepo.tokenOf(provider))
                     .put("smallModelId", provider.smallModelId.orEmpty())
                     .put("models", JSONArray(providerRepo.modelsOf(provider)))
@@ -180,7 +184,7 @@ fun ConfigScreen(
             .orEmpty()
         return JSONObject()
             .put("format", "ccm-api-config")
-            .put("version", 1)
+            .put("version", 2)
             .put(
                 "exportedAt",
                 SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
@@ -198,7 +202,13 @@ fun ConfigScreen(
         val root = JSONObject(text)
         val array = root.optJSONArray("providers") ?: error("文件格式不正确：缺少 providers")
         val keys = providerRepo.observeProviders().first()
-            .map { it.name to it.baseUrl.replace("\\/", "/") }
+            .map {
+                Triple(
+                    it.name,
+                    it.baseUrl.replace("\\/", "/"),
+                    ProviderProtocol.fromWire(it.protocol).wire,
+                )
+            }
             .toMutableSet()
         var added = 0
         var skipped = 0
@@ -207,7 +217,8 @@ fun ConfigScreen(
             val obj = array.optJSONObject(index) ?: continue
             val name = obj.optString("name").trim()
             val baseUrl = obj.optString("baseUrl").trim().replace("\\/", "/")
-            if (name.isBlank() || baseUrl.isBlank() || !keys.add(name to baseUrl)) {
+            val protocol = ProviderProtocol.fromWire(obj.optString("protocol")).wire
+            if (name.isBlank() || baseUrl.isBlank() || !keys.add(Triple(name, baseUrl, protocol))) {
                 skipped++
                 continue
             }
@@ -224,6 +235,7 @@ fun ConfigScreen(
                     firstModelId = models.firstOrNull().orEmpty(),
                     smallModelId = obj.optString("smallModelId")
                         .takeIf { it.isNotBlank() },
+                    protocol = protocol,
                 )
                 models.drop(1).forEach { providerRepo.addModel(id, it) }
                 added++
@@ -415,7 +427,7 @@ fun ConfigScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("服务商", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-            Button(onClick = { showAddProvider = true }) { Text("添加服务商") }
+            Button(onClick = { showProtocolPicker = true }) { Text("添加服务商") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { apiImportLauncher.launch(arrayOf("application/json", "text/plain")) }) {
@@ -463,11 +475,17 @@ fun ConfigScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = provider.name,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.weight(1f),
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = provider.name,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                text = ProviderProtocol.fromWire(provider.protocol).label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         Text(
                             text = if (expanded) "▾" else "▸",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -519,13 +537,27 @@ fun ConfigScreen(
         }
     }
 
+    if (showProtocolPicker) {
+        ProtocolPickerDialog(
+            onPick = { protocol ->
+                addProtocol = protocol.wire
+                showProtocolPicker = false
+                showAddProvider = true
+            },
+            onDismiss = { showProtocolPicker = false },
+        )
+    }
+
     if (showAddProvider) {
         AddProviderDialog(
-            onFetch = { baseUrl, apiKey -> providerRepo.fetchModelsFor(baseUrl, apiKey) },
+            protocol = ProviderProtocol.fromWire(addProtocol),
+            onFetch = { baseUrl, apiKey ->
+                providerRepo.fetchModelsFor(baseUrl, apiKey, addProtocol)
+            },
             onDismiss = { showAddProvider = false },
             onAdd = { name, url, key, model, small ->
                 scope.launch {
-                    val id = providerRepo.addProvider(name, url, key, model, small)
+                    val id = providerRepo.addProvider(name, url, key, model, small, addProtocol)
                     if (defaultProviderId.isBlank()) {
                         settings.setDefaultProvider(id)
                         settings.setDefaultModel(model)
@@ -573,16 +605,18 @@ fun ConfigScreen(
         EditProviderDialog(
             provider = editingProvider,
             initialModels = providerRepo.modelsOf(editingProvider),
+            initialProtocol = ProviderProtocol.fromWire(editingProvider.protocol),
             isDefaultProvider = editingProvider.id == defaultProviderId,
             defaultModelId = defaultModelId,
-            onFetch = { baseUrl, apiKey ->
+            onFetch = { baseUrl, apiKey, protocol ->
                 providerRepo.fetchModelsFor(
                     baseUrl,
                     apiKey.ifBlank { providerRepo.tokenOf(editingProvider) },
+                    protocol,
                 )
             },
             onDismiss = { editingProviderId = null },
-            onSave = { name, baseUrl, apiKey, smallModelId, models, newDefaultModel ->
+            onSave = { name, baseUrl, apiKey, smallModelId, models, newDefaultModel, protocol ->
                 scope.launch {
                     val ok = providerRepo.updateProvider(
                         editingProvider.id,
@@ -591,6 +625,7 @@ fun ConfigScreen(
                         apiKey,
                         smallModelId,
                         models,
+                        protocol,
                     )
                     if (!ok) {
                         Toast.makeText(context, "服务商已不存在", Toast.LENGTH_SHORT).show()
@@ -678,9 +713,10 @@ fun ConfigScreen(
 private fun EditProviderDialog(
     provider: ProviderEntity,
     initialModels: List<String>,
+    initialProtocol: ProviderProtocol,
     isDefaultProvider: Boolean,
     defaultModelId: String,
-    onFetch: suspend (baseUrl: String, apiKey: String) -> Result<List<String>>,
+    onFetch: suspend (baseUrl: String, apiKey: String, protocol: String) -> Result<List<String>>,
     onDismiss: () -> Unit,
     onSave: (
         name: String,
@@ -689,9 +725,11 @@ private fun EditProviderDialog(
         smallModelId: String,
         models: List<String>,
         newDefaultModel: String?,
+        protocol: String,
     ) -> Unit,
 ) {
     var name by remember(provider.id) { mutableStateOf(provider.name) }
+    var protocol by remember(provider.id) { mutableStateOf(initialProtocol) }
     var baseUrl by remember(provider.id) { mutableStateOf(provider.baseUrl) }
     var apiKey by remember(provider.id) { mutableStateOf("") }
     var smallModelId by remember(provider.id) {
@@ -729,6 +767,21 @@ private fun EditProviderDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                Text("兼容接口", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ProviderProtocol.entries.forEach { option ->
+                        ProtocolButton(
+                            label = option.label,
+                            selected = protocol == option,
+                            onClick = { protocol = option },
+                        )
+                    }
+                }
+                Text(
+                    "切换协议会重启使用该服务商的进行中对话；请确认 Base URL 与协议匹配。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedTextField(
                     value = name, onValueChange = { name = it },
                     label = { Text("名称") }, singleLine = true,
@@ -814,6 +867,7 @@ private fun EditProviderDialog(
                         smallModelId.trim(),
                         models.toList(),
                         selectedDefault,
+                        protocol.wire,
                     )
                 },
             ) { Text("保存") }
@@ -826,7 +880,7 @@ private fun EditProviderDialog(
     if (showAddModel) {
         AddModelDialog(
             existing = models.toSet(),
-            onFetch = { onFetch(baseUrl.trim(), apiKey.trim()) },
+            onFetch = { onFetch(baseUrl.trim(), apiKey.trim(), protocol.wire) },
             onAdd = { id ->
                 if (id.isNotBlank() && id !in models) models.add(id)
             },
@@ -950,6 +1004,7 @@ private fun AddModelDialog(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddProviderDialog(
+    protocol: ProviderProtocol,
     onFetch: suspend (baseUrl: String, apiKey: String) -> Result<List<String>>,
     onDismiss: () -> Unit,
     onAdd: (
@@ -972,7 +1027,7 @@ private fun AddProviderDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加服务商") },
+        title = { Text("添加服务商 · ${protocol.label}") },
         text = {
             Column(
                 modifier = Modifier
@@ -982,7 +1037,7 @@ private fun AddProviderDialog(
             ) {
                 Text("预设", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    providerPresets.forEach { preset ->
+                    presetsFor(protocol).forEach { preset ->
                         TextButton(onClick = {
                             name = preset.name
                             baseUrl = preset.baseUrl
@@ -1083,17 +1138,86 @@ private fun AddProviderDialog(
     )
 }
 
+@Composable
+private fun ProtocolPickerDialog(
+    onPick: (ProviderProtocol) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择兼容接口") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "先选择服务商提供的接口协议，再填写 Base URL 和 API Key。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                ProviderProtocol.entries.forEach { protocol ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(protocol) },
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(protocol.label, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = when (protocol) {
+                                    ProviderProtocol.ANTHROPIC ->
+                                        "服务商提供 Anthropic Messages 兼容地址（通常含 /anthropic）。"
+                                    ProviderProtocol.OPENAI ->
+                                        "服务商提供 OpenAI Chat Completions 地址；应用会在本机转换请求，" +
+                                            "需要模型支持工具调用。"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+@Composable
+private fun ProtocolButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    if (selected) {
+        Button(onClick = onClick) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick) { Text(label) }
+    }
+}
+
 private data class ProviderPreset(
     val name: String,
     val baseUrl: String,
     val modelId: String,
 )
 
-/** 市面主流服务商预设：选中后只需填 API Key。 */
-private val providerPresets = listOf(
+private fun presetsFor(protocol: ProviderProtocol): List<ProviderPreset> = when (protocol) {
+    ProviderProtocol.ANTHROPIC -> anthropicPresets
+    ProviderProtocol.OPENAI -> openAiPresets
+}
+
+/** Anthropic Messages 兼容地址：选中后只需填 API Key。 */
+private val anthropicPresets = listOf(
     ProviderPreset("DeepSeek", "https://api.deepseek.com/anthropic", "deepseek-flash"),
     ProviderPreset("GLM", "https://open.bigmodel.cn/api/anthropic", "glm-5.3-flash"),
     ProviderPreset("Kimi", "https://api.moonshot.cn/anthropic", "kimi-k2-0905-preview"),
     ProviderPreset("SiliconFlow", "https://api.siliconflow.cn", "deepseek-ai/DeepSeek-V4.1-Flash"),
     ProviderPreset("Qwen", "https://maas.qianwenaiapi.com/apps/anthropic", "deepseek-v4.1-flash-1017"),
+)
+
+/** OpenAI Chat Completions 兼容地址：由应用内代理转换。 */
+private val openAiPresets = listOf(
+    ProviderPreset("DeepSeek", "https://api.deepseek.com", "deepseek-flash"),
+    ProviderPreset("GLM", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash"),
+    ProviderPreset("Kimi", "https://api.moonshot.cn/v1", "kimi-k2-0905-preview"),
+    ProviderPreset("SiliconFlow", "https://api.siliconflow.cn/v1", "deepseek-ai/DeepSeek-V4.1-Flash"),
+    ProviderPreset("Qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "deepseek-v4.1-flash-1017"),
 )

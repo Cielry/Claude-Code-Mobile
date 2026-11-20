@@ -37,7 +37,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.lyuan.cc.CcmOutput
+import com.lyuan.cc.data.ProviderProtocol
 import com.lyuan.cc.data.WorkspaceUtils
+import com.lyuan.cc.proxy.OpenAiProxyServer
+import com.lyuan.cc.proxy.ProxyConfig
+import com.lyuan.cc.proxy.ProxyLogger
 import com.lyuan.cc.runtime.RuntimeManager
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -55,6 +59,8 @@ data class SessionSpec(
     val modelId: String,
     val smallModelId: String,
     val effort: String?,
+    val protocol: String = ProviderProtocol.ANTHROPIC.wire,
+    val providerModels: List<String> = emptyList(),
 )
 
 private class TerminalClient(
@@ -69,6 +75,9 @@ private class TerminalClient(
     override fun onTitleChanged(changedSession: TerminalSession) {}
     override fun onSessionFinished(finishedSession: TerminalSession) {
         handle.onFinished()
+        // 进程已退出，立刻释放本机转换代理，不必等用户关闭对话。
+        runCatching { handle.closeAction?.invoke() }
+        handle.closeAction = null
     }
 
     override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
@@ -219,26 +228,63 @@ fun TerminalScreen(
             // 保证新会话能读到随包的 settings.json / CLAUDE.md（配置版本变化时才重写）。
             runtime.ensureClaudeConfig()
             statusText = "正在启动 Claude Code…"
+            val protocol = ProviderProtocol.fromWire(spec.protocol)
+            val proxy = if (protocol == ProviderProtocol.OPENAI) {
+                runCatching {
+                    OpenAiProxyServer.start(
+                        ProxyConfig(
+                            providerBaseUrl = spec.baseUrl,
+                            providerApiKey = spec.token,
+                            modelId = spec.modelId,
+                            smallModelId = spec.smallModelId,
+                            models = spec.providerModels,
+                            logger = ProxyLogger { message -> Log.i("CcmProxy", message) },
+                        )
+                    )
+                }.getOrElse { error ->
+                    statusText = "OpenAI 转换代理启动失败：" +
+                        (error.message ?: error.javaClass.simpleName)
+                    return@LaunchedEffect
+                }
+            } else {
+                null
+            }
             val created = TerminalSessions.Handle(spec.conversationId, key)
+            created.closeAction = { proxy?.close() }
             val client = TerminalClient(context, created)
             created.viewClient = client
             // TerminalSession 构造时会创建 Handler，必须在主线程（有 Looper）执行。
-            val session = TerminalSession(
-                runtime.loader.absolutePath,
-                workDir,
-                arrayOf(
+            val session = try {
+                TerminalSession(
                     runtime.loader.absolutePath,
-                    "--library-path", runtime.libDir.absolutePath,
-                    "--argv0", "claude",
-                    runtime.binary.absolutePath,
-                    "--permission-mode", "manual",
-                ),
-                buildEnv(runtime, spec, File(context.filesDir, "env"), CcmOutput.outputDir(context)),
-                2000,
-                client,
-            )
+                    workDir,
+                    arrayOf(
+                        runtime.loader.absolutePath,
+                        "--library-path", runtime.libDir.absolutePath,
+                        "--argv0", "claude",
+                        runtime.binary.absolutePath,
+                        "--permission-mode", "manual",
+                    ),
+                    buildEnv(
+                        runtime,
+                        spec,
+                        File(context.filesDir, "env"),
+                        CcmOutput.outputDir(context),
+                        envBaseUrl = proxy?.baseUrl ?: spec.baseUrl,
+                        envToken = proxy?.authToken ?: spec.token,
+                        openAiMode = proxy != null,
+                    ),
+                    2000,
+                    client,
+                )
+            } catch (t: Throwable) {
+                proxy?.close()
+                statusText = "启动失败：" + (t.message ?: t.javaClass.simpleName)
+                return@LaunchedEffect
+            }
             if (!currentCoroutineContext().isActive) {
                 session.finishIfRunning()
+                proxy?.close()
                 return@LaunchedEffect
             }
             created.session = session
@@ -325,6 +371,9 @@ private fun buildEnv(
     spec: SessionSpec,
     envDir: File,
     outputDir: File,
+    envBaseUrl: String = spec.baseUrl,
+    envToken: String = spec.token,
+    openAiMode: Boolean = false,
 ): Array<String> {
     val nativeDir = runtime.loader.parentFile?.absolutePath ?: ""
     val env = mutableListOf(
@@ -353,11 +402,16 @@ private fun buildEnv(
         "CCM_NATIVE=${runtime.binary.absolutePath}",
         "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1",
     )
-    if (spec.baseUrl.isNotBlank()) env += "ANTHROPIC_BASE_URL=${spec.baseUrl}"
-    if (spec.token.isNotBlank()) {
+    if (openAiMode) {
+        // 子进程只拿到本机代理的随机 token；真实 Key 由应用内的代理持有。
+        env += "ENABLE_TOOL_SEARCH=false"
+        env += "API_TIMEOUT_MS=600000"
+    }
+    if (envBaseUrl.isNotBlank()) env += "ANTHROPIC_BASE_URL=$envBaseUrl"
+    if (envToken.isNotBlank()) {
         // 只用 Anthropic 兼容网关通用的 Bearer 鉴权。不设置 ANTHROPIC_API_KEY，
         // 避免 Claude Code 弹出「是否使用此 API Key」确认和双鉴权警告。
-        env += "ANTHROPIC_AUTH_TOKEN=${spec.token}"
+        env += "ANTHROPIC_AUTH_TOKEN=$envToken"
     }
     spec.effort?.takeIf { it.isNotBlank() }?.let { env += "CLAUDE_CODE_EFFORT_LEVEL=$it" }
     if (spec.modelId.isNotBlank()) {

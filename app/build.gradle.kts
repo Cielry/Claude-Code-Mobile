@@ -15,8 +15,8 @@ android {
         // targetSdk 36（Android 16）。环境工具经 linker64 / loader 映射执行，
         // 静态程序不再随包提供（见 docs/ENVIRONMENT.md）。
         targetSdk = 36
-        versionCode = 41
-        versionName = "1.0.1 beta-3"
+        versionCode = 42
+        versionName = "1.0.2"
 
         val abi = "arm64-v8a"
         ndk {
@@ -76,4 +76,8 @@ dependencies {
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     kapt("androidx.room:room-compiler:$roomVersion")
+
+    // 代理转换逻辑的 JVM 单元测试：真实 org.json 覆盖 Android Stub。
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

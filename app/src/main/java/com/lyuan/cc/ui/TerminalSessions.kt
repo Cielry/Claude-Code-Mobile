@@ -19,6 +19,8 @@ object TerminalSessions {
         @Volatile var shiftDown: () -> Boolean = { false }
         @Volatile var ctrlDown: () -> Boolean = { false }
         @Volatile var altDown: () -> Boolean = { false }
+        /** 会话附带的资源清理（如 OpenAI 转换代理），必须可重复调用。 */
+        @Volatile var closeAction: (() -> Unit)? = null
     }
 
     private val handles = LinkedHashMap<String, Handle>()
@@ -26,6 +28,7 @@ object TerminalSessions {
     /** 工作区 / 服务商 / 模型任一变化都需要重建该对话的会话。 */
     fun specKey(spec: SessionSpec): String = buildString {
         append(spec.workspace).append('\u0000')
+        append(spec.protocol).append('\u0000')
         append(spec.baseUrl).append('\u0000')
         append(spec.modelId).append('\u0000')
         append(spec.smallModelId).append('\u0000')
@@ -57,5 +60,7 @@ object TerminalSessions {
         handle.view = null
         handle.session?.finishIfRunning()
         handle.session = null
+        runCatching { handle.closeAction?.invoke() }
+        handle.closeAction = null
     }
 }

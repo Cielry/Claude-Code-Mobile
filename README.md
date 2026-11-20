@@ -5,7 +5,7 @@
 Root 或 Shizuku。
 
 - Application ID：`com.lyuan.cc`
-- 版本：`1.0.1 beta-3`（versionCode 41）
+- 版本：`1.0.2`（versionCode 42）
 - 架构：`arm64-v8a`
 - Android：`minSdk 28` / `targetSdk 36` / `compileSdk 34`
 
@@ -78,6 +78,7 @@ APK 运行时需要 `claude-native` 二进制。由于体积和分发许可原�
 
 ```
 app/                    Android 应用（Kotlin + Jetpack Compose）
+app/src/test/           JVM 单元/集成测试（OpenAI 转换代理）
 terminal-emulator/      Termux 终端模拟器（GPLv3）
 terminal-view/          Termux 终端视图（GPLv3）
 native/                 JNI 包装器源码（claude-exec / env-exec）
@@ -98,6 +99,8 @@ licenses/               第三方许可证原文
 - `build-bundled-tools.py`：从 Termux 前缀生成 `assets/env/bundled/*.tgz`
 - `build-termux-package-list.py`：生成设备包列表 JSON
 - `verify-bundled-tools.py`：解包并冒烟验证内置包
+- `package.py`：测试 + 构建 + 校验 + 归档（需按 `docs/BUILD.md` 配置工具链，
+  该文档不在本分发副本中）
 
 可通过 `TERMUX_PREFIX` 覆盖默认 Termux 前缀；JDK 路径可用 `JAVA_HOME` 指定。
 

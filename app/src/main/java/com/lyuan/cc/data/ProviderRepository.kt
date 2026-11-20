@@ -22,7 +22,12 @@ class ProviderRepository(context: Context) {
 
     fun observeProviders(): Flow<List<ProviderEntity>> =
         db.providerDao().observeAll().map { list ->
-            list.map { it.copy(baseUrl = normalizeBaseUrl(it.baseUrl)) }
+            list.map {
+                it.copy(
+                    baseUrl = normalizeBaseUrl(it.baseUrl),
+                    protocol = ProviderProtocol.fromWire(it.protocol).wire,
+                )
+            }
         }
 
     suspend fun addProvider(
@@ -31,6 +36,7 @@ class ProviderRepository(context: Context) {
         apiKey: String,
         firstModelId: String,
         smallModelId: String? = null,
+        protocol: String = ProviderProtocol.ANTHROPIC.wire,
     ): String {
         val id = UUID.randomUUID().toString()
         val models = if (firstModelId.isBlank()) emptyList() else listOf(firstModelId)
@@ -40,6 +46,7 @@ class ProviderRepository(context: Context) {
             name = name,
             baseUrl = normalizeBaseUrl(baseUrl),
             authType = "api_key",
+            protocol = ProviderProtocol.fromWire(protocol).wire,
             credentialAlias = id,
             credentialCipher = if (apiKey.isBlank()) null else CryptoManager(id).encrypt(apiKey),
             modelsJson = serializeModels(models),
@@ -70,6 +77,7 @@ class ProviderRepository(context: Context) {
                 name = "默认服务商",
                 baseUrl = normalizeBaseUrl(baseUrl),
                 authType = "api_key",
+                protocol = ProviderProtocol.ANTHROPIC.wire,
                 credentialAlias = LEGACY_ALIAS,
                 credentialCipher = cipher.takeIf { it.isNotBlank() },
                 modelsJson = serializeModels(listOf(modelId)),
@@ -87,25 +95,36 @@ class ProviderRepository(context: Context) {
     suspend fun fetchModels(providerId: String): Result<List<String>> {
         val provider = db.providerDao().find(providerId)
             ?: return Result.failure(IllegalStateException("服务商不存在"))
-        return fetchModelsFor(provider.baseUrl, tokenOf(provider))
+        return fetchModelsFor(provider.baseUrl, tokenOf(provider), provider.protocol)
     }
 
     /**
-     * 按 Base URL + Key 拉取模型列表，兼容 OpenAI 的 `/v1/models`、`/models`，
-     * 以及带 `/anthropic` 后缀的 base URL。
+     * 按协议、Base URL 与 Key 拉取模型列表。
+     * Anthropic 兼容 `/v1/models`、`/models` 与带 `/anthropic` 后缀的地址；
+     * OpenAI 兼容 `/v1/models`、`/models`，只发送 Bearer 鉴权。
      */
     suspend fun fetchModelsFor(
         baseUrl: String,
         apiKey: String,
+        protocol: String = ProviderProtocol.ANTHROPIC.wire,
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         runCatching {
             val base = normalizeBaseUrl(baseUrl).trimEnd('/')
             if (base.isBlank()) error("Base URL 为空")
-            val candidates = buildList {
-                add("$base/v1/models")
-                add("$base/models")
-                if (base.contains("/anthropic")) {
-                    add(base.substringBefore("/anthropic").trimEnd('/') + "/v1/models")
+            val isOpenAi = ProviderProtocol.fromWire(protocol) == ProviderProtocol.OPENAI
+            val candidates = if (isOpenAi) {
+                when {
+                    base.endsWith("/models") -> listOf(base)
+                    base.endsWith("/v1") -> listOf("$base/models")
+                    else -> listOf("$base/v1/models", "$base/models")
+                }
+            } else {
+                buildList {
+                    add("$base/v1/models")
+                    add("$base/models")
+                    if (base.contains("/anthropic")) {
+                        add(base.substringBefore("/anthropic").trimEnd('/') + "/v1/models")
+                    }
                 }
             }.distinct()
 
@@ -117,10 +136,10 @@ class ProviderRepository(context: Context) {
                         connectTimeout = 15_000
                         readTimeout = 20_000
                         setRequestProperty("Accept", "application/json")
-                        setRequestProperty("anthropic-version", "2023-06-01")
+                        if (!isOpenAi) setRequestProperty("anthropic-version", "2023-06-01")
                         if (apiKey.isNotBlank()) {
                             setRequestProperty("Authorization", "Bearer $apiKey")
-                            setRequestProperty("x-api-key", apiKey)
+                            if (!isOpenAi) setRequestProperty("x-api-key", apiKey)
                         }
                     }
                     val code = conn.responseCode
@@ -131,7 +150,11 @@ class ProviderRepository(context: Context) {
                         conn.disconnect()
                     }
                     if (code !in 200..299) {
-                        lastError = "HTTP $code"
+                        lastError = when (code) {
+                            401, 403 -> "鉴权失败（HTTP $code）"
+                            404 -> "服务商未开放模型列表，可手动填写模型 ID"
+                            else -> "HTTP $code"
+                        }
                         continue
                     }
                     val json = JSONObject(body)
@@ -202,6 +225,7 @@ class ProviderRepository(context: Context) {
         apiKey: String?,
         smallModelId: String?,
         models: List<String>,
+        protocol: String,
     ): Boolean {
         val provider = db.providerDao().find(id) ?: return false
         val alias = provider.credentialAlias ?: provider.id
@@ -215,6 +239,7 @@ class ProviderRepository(context: Context) {
             provider.copy(
                 name = name.trim(),
                 baseUrl = normalizeBaseUrl(baseUrl),
+                protocol = ProviderProtocol.fromWire(protocol).wire,
                 credentialAlias = alias,
                 credentialCipher = cipher,
                 modelsJson = serializeModels(cleaned),

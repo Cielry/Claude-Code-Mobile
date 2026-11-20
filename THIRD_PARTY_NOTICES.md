@@ -17,6 +17,8 @@
 | jq | https://jqlang.github.io/jq | 1.8.2（Termux 构建） | MIT | 内置包 `assets/env/bundled/jq.tgz`；许可证见 `licenses/jq-copyright.txt` |
 | CA 证书包 | Mozilla CA / Termux ca-certificates | - | MPL-2.0 | `assets/env/certs/cert.pem`，供 git/curl 使用；许可证见 `licenses/ca-certificates-copyright.txt` |
 | XZ for Java | https://tukaani.org/xz/java.html | 1.9 | Public Domain | 应用内解压 `.deb` 的 `data.tar.xz`（`org.tukaani:xz`）；许可声明见 `licenses/xz-java-PUBLIC-DOMAIN.txt` |
+| JUnit | https://junit.org/junit4/ | 4.13.2 | EPL-1.0 | 仅 JVM 单元测试依赖，不随 APK 分发；许可证见 `licenses/junit-EPL-1.0.txt` |
+| org.json | https://github.com/stleary/JSON-java | 20240303 | JSON License | 仅 JVM 单元测试使用真实实现覆盖 Android Stub，不随 APK 分发；许可证见 `licenses/org-json-LICENSE.txt` |
 | Bash | https://www.gnu.org/software/bash/ | 5.3.20（Termux 构建） | GPL-3.0+ | 内置包 `assets/env/bundled/bash.tgz`；许可证见 `licenses/bash-copyright.txt` |
 | GNU Coreutils | https://www.gnu.org/software/coreutils/ | 9.11（Termux 构建） | GPL-3.0+ | 内置包 `assets/env/bundled/coreutils.tgz`（ls / cp / sort 等 100 个命令入口，符号链接别名）；许可证见 `licenses/coreutils-copyright.txt` |
 | Grep | https://www.gnu.org/software/grep/ | 3.12（Termux 构建） | GPL-3.0+ | 内置包 `assets/env/bundled/grep.tgz`；许可证见 `licenses/grep-copyright.txt` |

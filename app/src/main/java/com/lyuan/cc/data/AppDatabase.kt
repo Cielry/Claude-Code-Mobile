@@ -1,6 +1,7 @@
 package com.lyuan.cc.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -12,6 +13,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "projects")
@@ -35,6 +38,8 @@ data class ProviderEntity(
     val name: String,
     val baseUrl: String,
     val authType: String,
+    @ColumnInfo(defaultValue = "'anthropic'")
+    val protocol: String = ProviderProtocol.ANTHROPIC.wire,
     val credentialAlias: String? = null,
     val credentialCipher: String? = null,
     val modelsJson: String = "[]",
@@ -122,7 +127,7 @@ interface ConversationDao {
 
 @Database(
     entities = [ProjectEntity::class, ProviderEntity::class, ConversationEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -134,13 +139,24 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var instance: AppDatabase? = null
 
+        /** v3 为服务商增加接口协议，默认沿用 Anthropic，保留已有配置。 */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE providers ADD COLUMN protocol TEXT NOT NULL DEFAULT 'anthropic'"
+                )
+            }
+        }
+
         fun get(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "ccm.db",
-                ).fallbackToDestructiveMigration()
+                ).addMigrations(MIGRATION_2_3)
+                    // 仅 v1 及更早版本没有迁移路径；v2 用户走上面的显式迁移。
+                    .fallbackToDestructiveMigrationFrom(1)
                     .build()
                     .also { instance = it }
             }

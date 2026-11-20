@@ -49,6 +49,7 @@ import androidx.lifecycle.lifecycleScope
 import com.lyuan.cc.data.AppDatabase
 import com.lyuan.cc.data.ConversationEntity
 import com.lyuan.cc.data.ProviderEntity
+import com.lyuan.cc.data.ProviderProtocol
 import com.lyuan.cc.data.ProviderRepository
 import com.lyuan.cc.data.SettingsRepository
 import com.lyuan.cc.data.Workspace
@@ -219,6 +220,8 @@ private fun MainScreen(
                 modelId = modelId,
                 smallModelId = provider.smallModelId.orEmpty(),
                 effort = conversation.effort,
+                protocol = ProviderProtocol.fromWire(provider.protocol).wire,
+                providerModels = models,
             )
         } else {
             null
