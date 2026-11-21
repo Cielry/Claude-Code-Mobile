@@ -17,7 +17,7 @@ class ProxyStreamException(
 class AnthropicSseTranslator(
     private val requestedModel: String,
     private val emit: (event: String, data: JSONObject) -> Unit,
-) {
+) : ProxySseTranslator {
     private data class ToolBuffer(
         var id: String = "",
         val name: StringBuilder = StringBuilder(),
@@ -36,7 +36,7 @@ class AnthropicSseTranslator(
     private var generatedChars = 0
     private val messageId = "msg_${UUID.randomUUID()}"
 
-    fun begin(inputTokens: Int) {
+    override fun begin(inputTokens: Int) {
         if (started || finished) return
         started = true
         val message = JSONObject()
@@ -54,7 +54,7 @@ class AnthropicSseTranslator(
         emit("message_start", JSONObject().put("type", "message_start").put("message", message))
     }
 
-    fun consume(json: JSONObject) {
+    override fun consume(json: JSONObject) {
         if (finished) return
         if (json.has("error")) {
             val error = json.optJSONObject("error")
@@ -112,7 +112,7 @@ class AnthropicSseTranslator(
     }
 
     /** 收到 [DONE] 或 EOF 时调用；重复调用安全。 */
-    fun complete() {
+    override fun complete() {
         if (finished) return
         ensureStarted()
         if (!emittedText && tools.isEmpty()) {
@@ -191,7 +191,7 @@ class AnthropicSseTranslator(
         finished = true
     }
 
-    fun fail(type: String, message: String) {
+    override fun fail(type: String, message: String) {
         if (finished) return
         finished = true
         emit(
@@ -207,7 +207,7 @@ class AnthropicSseTranslator(
         )
     }
 
-    val isFinished: Boolean get() = finished
+    override val isFinished: Boolean get() = finished
 
     private fun ensureStarted() {
         if (!started) begin(0)

@@ -44,6 +44,66 @@ class RealClaudeCliE2eTest {
     }
 
     @Test
+    fun realCliStreamsThroughResponsesProxy() {
+        val (binary, loader, libDir) = requireToolchain()
+        val root = Files.createTempDirectory("ccm-e2e-responses").toFile()
+        val mock = MockOpenAiServer().apply { includeToolCall = false }
+        val proxy = startProxy(mock, responsesApi = true)
+        try {
+            val result = runCli(
+                binary, loader, libDir, proxy, root,
+                listOf("-p", "Say hi", "--permission-mode", "manual"),
+            )
+            assertTrue("claude-native 未在 90 秒内结束，输出：\n${result.output}", result.finished)
+            assertEquals("claude-native 退出码异常，输出：\n${result.output}", 0, result.exitCode)
+            assertTrue("claude-native 输出缺少 Hi：\n${result.output}", result.output.contains("Hi"))
+            assertTrue("代理没有收到 Responses 请求", mock.responsesRequests >= 1)
+            assertEquals("Bearer sk-e2e-provider", mock.lastAuthorization)
+            assertFalse("真实 Key 泄漏到子进程输出", result.output.contains("sk-e2e-provider"))
+        } finally {
+            proxy.close()
+            mock.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun realCliExecutesToolThroughResponsesProxy() {
+        val (binary, loader, libDir) = requireToolchain()
+        val root = Files.createTempDirectory("ccm-e2e-responses-tool").toFile()
+        val mock = MockOpenAiServer().apply { toolThenText = true }
+        val proxy = startProxy(mock, responsesApi = true)
+        try {
+            val result = runCli(
+                binary, loader, libDir, proxy, root,
+                listOf(
+                    "-p", "Run the tool once.",
+                    "--permission-mode", "manual",
+                    "--allowedTools", "Bash",
+                ),
+            )
+            assertTrue("claude-native 未在 90 秒内结束，输出：\n${result.output}", result.finished)
+            assertEquals("claude-native 退出码异常，输出：\n${result.output}", 0, result.exitCode)
+            assertTrue("CLI 输出缺少 tool-ok：\n${result.output}", result.output.contains("tool-ok"))
+            val input = mock.lastBody?.optJSONArray("input")
+                ?: error("最后一次上游请求缺少 input")
+            val toolOutput = (0 until input.length())
+                .mapNotNull { input.optJSONObject(it) }
+                .firstOrNull { it.optString("type") == "function_call_output" }
+            assertNotNull("上游没有收到 function_call_output", toolOutput)
+            assertTrue(
+                "工具结果缺少命令输出：${toolOutput?.optString("output")}",
+                toolOutput?.optString("output").orEmpty().contains("proxy-tool-ok"),
+            )
+            assertFalse("真实 Key 泄漏到子进程输出", result.output.contains("sk-e2e-provider"))
+        } finally {
+            proxy.close()
+            mock.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun realCliExecutesToolThroughProxy() {
         val (binary, loader, libDir) = requireToolchain()
         val root = Files.createTempDirectory("ccm-e2e-tool").toFile()
@@ -92,13 +152,17 @@ class RealClaudeCliE2eTest {
         return Triple(binary, loader, libDir)
     }
 
-    private fun startProxy(mock: MockOpenAiServer): OpenAiProxyServer =
+    private fun startProxy(
+        mock: MockOpenAiServer,
+        responsesApi: Boolean = false,
+    ): OpenAiProxyServer =
         OpenAiProxyServer.start(
             ProxyConfig(
                 providerBaseUrl = mock.baseUrl,
                 providerApiKey = "sk-e2e-provider",
                 modelId = "model-a",
                 models = listOf("model-a"),
+                responsesApi = responsesApi,
             )
         )
 

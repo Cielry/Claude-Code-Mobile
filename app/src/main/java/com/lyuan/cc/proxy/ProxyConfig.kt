@@ -27,6 +27,8 @@ data class ProxyConfig(
     val modelId: String = "",
     val smallModelId: String = "",
     val models: List<String> = emptyList(),
+    /** true 时走 OpenAI Responses API（`/responses`），否则走 Chat Completions。 */
+    val responsesApi: Boolean = false,
     val logger: ProxyLogger = ProxyLogger {},
 )
 

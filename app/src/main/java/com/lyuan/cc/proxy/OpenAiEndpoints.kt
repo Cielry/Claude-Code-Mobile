@@ -35,12 +35,29 @@ object OpenAiEndpoints {
         }.distinct()
     }
 
+    /**
+     * Responses API 候选地址。
+     * - 已填写完整 `/responses`：原样使用。
+     * - 以 `/v1` 结尾：追加 `/responses`。
+     * - 其他：先尝试 `/v1/responses`，再回退到 `/responses`。
+     */
+    fun responsesCandidates(raw: String): List<String> {
+        val base = normalizeBase(raw)
+        return when {
+            base.endsWith("/responses") -> listOf(base)
+            base.endsWith("/v1") -> listOf("$base/responses")
+            else -> listOf("$base/v1/responses", "$base/responses")
+        }.distinct()
+    }
+
     fun modelsCandidates(raw: String): List<String> {
         val base = normalizeBase(raw)
         return when {
             base.endsWith("/models") -> listOf(base)
             base.endsWith("/chat/completions") ->
                 listOf(base.removeSuffix("/chat/completions") + "/models")
+            base.endsWith("/responses") ->
+                listOf(base.removeSuffix("/responses") + "/models")
             base.endsWith("/v1") -> listOf("$base/models")
             else -> listOf("$base/v1/models", "$base/models")
         }.distinct()

@@ -15,8 +15,8 @@ android {
         // targetSdk 36（Android 16）。环境工具经 linker64 / loader 映射执行，
         // 静态程序不再随包提供（见 docs/ENVIRONMENT.md）。
         targetSdk = 36
-        versionCode = 42
-        versionName = "1.0.2"
+        versionCode = 43
+        versionName = "1.0.3"
 
         val abi = "arm64-v8a"
         ndk {

@@ -21,7 +21,16 @@ class OpenAiProxyServer private constructor(
     val authToken: String,
 ) {
     /** 整个代理共享一个上游客户端，复用已探测成功的端点。 */
-    private val upstreamClient = OpenAiUpstreamClient(config, config.logger)
+    private val upstreamClient = OpenAiUpstreamClient(
+        config,
+        config.logger,
+        if (config.responsesApi) {
+            OpenAiEndpoints::responsesCandidates
+        } else {
+            OpenAiEndpoints::chatCandidates
+        },
+        if (config.responsesApi) "Responses" else "Chat Completions",
+    )
 
     @Volatile
     private var closed = false
@@ -138,17 +147,21 @@ class OpenAiProxyServer private constructor(
             return
         }
         val stream = body.optBoolean("stream", false)
-        val openAiBody = AnthropicRequestMapper.toOpenAi(body, config)
+        val upstreamBody = if (config.responsesApi) {
+            AnthropicResponsesRequestMapper.toResponses(body, config)
+        } else {
+            AnthropicRequestMapper.toOpenAi(body, config)
+        }
         var upstream: UpstreamResponse? = null
         try {
-            val result = openWithRetries(upstreamClient, openAiBody, stream)
+            val result = openWithRetries(upstreamClient, upstreamBody, stream)
             upstream = result
             if (result.code !in 200..299) {
                 sendUpstreamError(response, result)
                 return
             }
             if (stream && result.contentType.contains("text/event-stream", ignoreCase = true)) {
-                relayStream(response, body, openAiBody, result)
+                relayStream(response, body, upstreamBody, result)
             } else {
                 val text = result.input?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 val json = runCatching { JSONObject(text) }.getOrElse {
@@ -174,10 +187,11 @@ class OpenAiProxyServer private constructor(
                     sendJsonError(response, json)
                     return
                 }
-                val message = OpenAiResponseMapper.toAnthropic(
-                    json,
-                    openAiBody.optString("model"),
-                )
+                val message = if (config.responsesApi) {
+                    ResponsesResponseMapper.toAnthropic(json, upstreamBody.optString("model"))
+                } else {
+                    OpenAiResponseMapper.toAnthropic(json, upstreamBody.optString("model"))
+                }
                 if (stream) {
                     response.startSse()
                     OpenAiResponseMapper.emitAsStream(message) { event, data ->
@@ -203,26 +217,47 @@ class OpenAiProxyServer private constructor(
         val error = current.errorBody.lowercase()
         var changed = false
         val retryBody = JSONObject(body.toString())
-        when {
-            "stream_options" in error && retryBody.has("stream_options") -> {
-                retryBody.remove("stream_options")
-                changed = true
+        if (config.responsesApi) {
+            when {
+                "max_output_tokens" in error && retryBody.has("max_output_tokens") -> {
+                    retryBody.remove("max_output_tokens")
+                    changed = true
+                }
+                "temperature" in error && retryBody.has("temperature") -> {
+                    retryBody.remove("temperature")
+                    changed = true
+                }
+                "parallel_tool_calls" in error && retryBody.has("parallel_tool_calls") -> {
+                    retryBody.remove("parallel_tool_calls")
+                    changed = true
+                }
+                "instructions" in error && retryBody.has("instructions") -> {
+                    moveInstructionsIntoInput(retryBody)
+                    changed = true
+                }
             }
-            "max_completion_tokens" in error && retryBody.has("max_tokens") -> {
-                val value: Any = retryBody.opt("max_tokens") ?: 0
-                retryBody.remove("max_tokens")
-                retryBody.put("max_completion_tokens", value)
-                changed = true
-            }
-            "max_tokens" in error && retryBody.has("max_completion_tokens") -> {
-                val value: Any = retryBody.opt("max_completion_tokens") ?: 0
-                retryBody.remove("max_completion_tokens")
-                retryBody.put("max_tokens", value)
-                changed = true
-            }
-            "temperature" in error && retryBody.has("temperature") -> {
-                retryBody.remove("temperature")
-                changed = true
+        } else {
+            when {
+                "stream_options" in error && retryBody.has("stream_options") -> {
+                    retryBody.remove("stream_options")
+                    changed = true
+                }
+                "max_completion_tokens" in error && retryBody.has("max_tokens") -> {
+                    val value: Any = retryBody.opt("max_tokens") ?: 0
+                    retryBody.remove("max_tokens")
+                    retryBody.put("max_completion_tokens", value)
+                    changed = true
+                }
+                "max_tokens" in error && retryBody.has("max_completion_tokens") -> {
+                    val value: Any = retryBody.opt("max_completion_tokens") ?: 0
+                    retryBody.remove("max_completion_tokens")
+                    retryBody.put("max_tokens", value)
+                    changed = true
+                }
+                "temperature" in error && retryBody.has("temperature") -> {
+                    retryBody.remove("temperature")
+                    changed = true
+                }
             }
         }
         if (!changed) return current
@@ -230,15 +265,34 @@ class OpenAiProxyServer private constructor(
         return client.open(retryBody, stream)
     }
 
+    /** 部分 Responses 兼容服务商不认 `instructions`，降级成 system 输入项。 */
+    private fun moveInstructionsIntoInput(body: JSONObject) {
+        val instructions = body.optString("instructions").trim()
+        body.remove("instructions")
+        if (instructions.isEmpty()) return
+        val existing = body.optJSONArray("input") ?: JSONArray()
+        val rebuilt = JSONArray()
+            .put(JSONObject().put("role", "system").put("content", instructions))
+        for (index in 0 until existing.length()) {
+            rebuilt.put(existing.opt(index))
+        }
+        body.put("input", rebuilt)
+    }
+
     private fun relayStream(
         response: ProxyHttpResponse,
         requestBody: JSONObject,
-        openAiBody: JSONObject,
+        upstreamBody: JSONObject,
         upstream: UpstreamResponse,
     ) {
         val clientGone = AtomicBoolean(false)
-        val translator = AnthropicSseTranslator(openAiBody.optString("model")) { event, data ->
+        val emit: (String, JSONObject) -> Unit = { event, data ->
             response.sendEvent(event, data)
+        }
+        val translator: ProxySseTranslator = if (config.responsesApi) {
+            ResponsesSseTranslator(upstreamBody.optString("model"), emit)
+        } else {
+            AnthropicSseTranslator(upstreamBody.optString("model"), emit)
         }
         val heartbeat = Heartbeat(
             ping = { response.sendPing() },
@@ -259,7 +313,12 @@ class OpenAiProxyServer private constructor(
             if (!clientGone.get() && !translator.isFinished) translator.complete()
         } catch (e: ProxyStreamException) {
             if (!clientGone.get()) {
-                runCatching { translator.fail(e.anthropicType, e.message) }
+                runCatching {
+                    translator.fail(
+                        e.anthropicType,
+                        ProxyText.redact(e.message, config.providerApiKey),
+                    )
+                }
             }
         } catch (t: Throwable) {
             if (!clientGone.get()) {
@@ -277,7 +336,7 @@ class OpenAiProxyServer private constructor(
 
     private fun consumeSse(
         reader: BufferedReader,
-        translator: AnthropicSseTranslator,
+        translator: ProxySseTranslator,
         heartbeat: Heartbeat,
         clientGone: AtomicBoolean,
     ) {
@@ -307,7 +366,7 @@ class OpenAiProxyServer private constructor(
 
     private fun dispatchSseData(
         payload: String,
-        translator: AnthropicSseTranslator,
+        translator: ProxySseTranslator,
         heartbeat: Heartbeat,
     ) {
         val trimmed = payload.trim()
@@ -424,7 +483,10 @@ class OpenAiProxyServer private constructor(
             val proxy = OpenAiProxyServer(config, server, token)
             holder.set(proxy)
             server.start()
-            config.logger.log("OpenAI 转换代理已启动：${proxy.baseUrl}")
+            config.logger.log(
+                "${if (config.responsesApi) "Responses" else "Chat Completions"} 转换代理已启动：" +
+                    proxy.baseUrl,
+            )
             return proxy
         }
 

@@ -21,6 +21,8 @@ internal class MockOpenAiServer : AutoCloseable {
     @Volatile var lastBody: JSONObject? = null
     @Volatile var requestCount = 0
     @Volatile var chatRequests = 0
+    @Volatile var responsesRequests = 0
+    @Volatile var lastPath: String = ""
     @Volatile var rejectStreamOptions = false
     @Volatile var ignoreStream = false
     @Volatile var includeToolCall = true
@@ -49,6 +51,7 @@ internal class MockOpenAiServer : AutoCloseable {
             val requestLine = readLine(input) ?: return
             val path = requestLine.split(' ').getOrNull(1)?.substringBefore('?').orEmpty()
             paths.add(path)
+            lastPath = path
             val headers = LinkedHashMap<String, String>()
             while (true) {
                 val line = readLine(input) ?: break
@@ -76,6 +79,8 @@ internal class MockOpenAiServer : AutoCloseable {
                 )
             } else if (path.endsWith("/chat/completions")) {
                 handleChat(JSONObject(String(body, Charsets.UTF_8)), headers, output)
+            } else if (path.endsWith("/responses")) {
+                handleResponses(JSONObject(String(body, Charsets.UTF_8)), headers, output)
             } else {
                 respond(output, 200, """{"data":[{"id":"model-a"}]}""", "application/json")
             }
@@ -168,6 +173,183 @@ internal class MockOpenAiServer : AutoCloseable {
         }
         events.forEach { line ->
             output.write("data: $line\n\n".toByteArray(Charsets.UTF_8))
+            output.flush()
+        }
+    }
+
+    private fun handleResponses(
+        json: JSONObject,
+        headers: Map<String, String>,
+        output: BufferedOutputStream,
+    ) {
+        requestCount++
+        responsesRequests++
+        lastBody = json
+        lastAuthorization = headers["authorization"]
+        if (json.optString("model") == "force-401") {
+            respond(
+                output,
+                401,
+                """{"error":{"message":"invalid key","type":"invalid_request_error"}}""",
+                "application/json",
+            )
+            return
+        }
+
+        val input = json.optJSONArray("input")
+        val hasToolResult = (0 until (input?.length() ?: 0)).any { index ->
+            input?.optJSONObject(index)?.optString("type") == "function_call_output"
+        }
+        val emitTool = if (toolThenText) !hasToolResult else includeToolCall
+        val text = if (toolThenText && hasToolResult) "tool-ok" else "Hi"
+        val toolName = if (toolThenText) "Bash" else "Read"
+        val toolArguments =
+            if (toolThenText) """{"command":"echo proxy-tool-ok"}""" else """{"path":"/a"}"""
+
+        val messageItem = JSONObject()
+            .put("type", "message")
+            .put("role", "assistant")
+            .put(
+                "content",
+                org.json.JSONArray().put(
+                    JSONObject().put("type", "output_text").put("text", text)
+                ),
+            )
+        val toolItem = JSONObject()
+            .put("type", "function_call")
+            .put("id", "fc_1")
+            .put("call_id", "call_1")
+            .put("name", toolName)
+            .put("arguments", toolArguments)
+        val outputItems = org.json.JSONArray()
+        if (text.isNotEmpty()) outputItems.put(messageItem)
+        if (emitTool) outputItems.put(toolItem)
+
+        val completed = JSONObject()
+            .put("type", "response.completed")
+            .put(
+                "response",
+                JSONObject()
+                    .put("id", "resp_1")
+                    .put("object", "response")
+                    .put("status", "completed")
+                    .put("output", outputItems)
+                    .put(
+                        "usage",
+                        JSONObject()
+                            .put("input_tokens", 10)
+                            .put("output_tokens", 2)
+                            .put("total_tokens", 12),
+                    ),
+            )
+
+        if (!json.optBoolean("stream") || ignoreStream) {
+            respond(
+                output,
+                200,
+                JSONObject()
+                    .put("id", "resp_1")
+                    .put("object", "response")
+                    .put("status", "completed")
+                    .put("output", outputItems)
+                    .put(
+                        "usage",
+                        JSONObject()
+                            .put("input_tokens", 10)
+                            .put("output_tokens", 2)
+                            .put("total_tokens", 12),
+                    )
+                    .toString(),
+                "application/json",
+            )
+            return
+        }
+
+        output.write(
+            ("HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/event-stream\r\n" +
+                "Connection: close\r\n\r\n").toByteArray(Charsets.US_ASCII)
+        )
+        output.flush()
+
+        val events = mutableListOf<Pair<String, JSONObject>>()
+        events.add("response.created" to JSONObject().put("type", "response.created"))
+        if (text.isNotEmpty()) {
+            events.add(
+                "response.output_item.added" to JSONObject()
+                    .put("type", "response.output_item.added")
+                    .put("output_index", 0)
+                    .put(
+                        "item",
+                        JSONObject().put("type", "message").put("role", "assistant"),
+                    ),
+            )
+            events.add(
+                "response.output_text.delta" to JSONObject()
+                    .put("type", "response.output_text.delta")
+                    .put("output_index", 0)
+                    .put("content_index", 0)
+                    .put("delta", text),
+            )
+            events.add(
+                "response.output_text.done" to JSONObject()
+                    .put("type", "response.output_text.done")
+                    .put("output_index", 0)
+                    .put("content_index", 0)
+                    .put("text", text),
+            )
+            events.add(
+                "response.output_item.done" to JSONObject()
+                    .put("type", "response.output_item.done")
+                    .put("output_index", 0)
+                    .put("item", messageItem),
+            )
+        }
+        if (emitTool) {
+            val toolIndex = if (text.isNotEmpty()) 1 else 0
+            events.add(
+                "response.output_item.added" to JSONObject()
+                    .put("type", "response.output_item.added")
+                    .put("output_index", toolIndex)
+                    .put(
+                        "item",
+                        JSONObject()
+                            .put("type", "function_call")
+                            .put("call_id", "call_1")
+                            .put("name", toolName)
+                            .put("arguments", ""),
+                    ),
+            )
+            val split = toolArguments.length / 2
+            events.add(
+                "response.function_call_arguments.delta" to JSONObject()
+                    .put("type", "response.function_call_arguments.delta")
+                    .put("output_index", toolIndex)
+                    .put("delta", toolArguments.substring(0, split)),
+            )
+            events.add(
+                "response.function_call_arguments.delta" to JSONObject()
+                    .put("type", "response.function_call_arguments.delta")
+                    .put("output_index", toolIndex)
+                    .put("delta", toolArguments.substring(split)),
+            )
+            events.add(
+                "response.function_call_arguments.done" to JSONObject()
+                    .put("type", "response.function_call_arguments.done")
+                    .put("output_index", toolIndex)
+                    .put("arguments", toolArguments),
+            )
+            events.add(
+                "response.output_item.done" to JSONObject()
+                    .put("type", "response.output_item.done")
+                    .put("output_index", toolIndex)
+                    .put("item", toolItem),
+            )
+        }
+        events.add(completed.getString("type") to completed)
+
+        events.forEach { (name, payload) ->
+            output.write("event: $name\ndata: $payload\n\n".toByteArray(Charsets.UTF_8))
             output.flush()
         }
     }

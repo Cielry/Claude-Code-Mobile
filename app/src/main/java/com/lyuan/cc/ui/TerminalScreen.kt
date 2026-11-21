@@ -229,7 +229,7 @@ fun TerminalScreen(
             runtime.ensureClaudeConfig()
             statusText = "正在启动 Claude Code…"
             val protocol = ProviderProtocol.fromWire(spec.protocol)
-            val proxy = if (protocol == ProviderProtocol.OPENAI) {
+            val proxy = if (protocol.usesProxy) {
                 runCatching {
                     OpenAiProxyServer.start(
                         ProxyConfig(
@@ -238,11 +238,12 @@ fun TerminalScreen(
                             modelId = spec.modelId,
                             smallModelId = spec.smallModelId,
                             models = spec.providerModels,
+                            responsesApi = protocol == ProviderProtocol.RESPONSES,
                             logger = ProxyLogger { message -> Log.i("CcmProxy", message) },
                         )
                     )
                 }.getOrElse { error ->
-                    statusText = "OpenAI 转换代理启动失败：" +
+                    statusText = "${protocol.label}转换代理启动失败：" +
                         (error.message ?: error.javaClass.simpleName)
                     return@LaunchedEffect
                 }

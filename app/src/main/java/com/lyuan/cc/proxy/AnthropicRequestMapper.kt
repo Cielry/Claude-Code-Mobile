@@ -70,7 +70,7 @@ object AnthropicRequestMapper {
         return out
     }
 
-    private fun appendSystem(target: MutableList<String>, value: Any?) {
+    internal fun appendSystem(target: MutableList<String>, value: Any?) {
         when (value) {
             is String -> value.trim().takeIf { it.isNotEmpty() }?.let(target::add)
             is JSONArray -> for (i in 0 until value.length()) {
@@ -217,7 +217,7 @@ object AnthropicRequestMapper {
             .put("content", text.ifBlank { "(empty)" })
     }
 
-    private fun contentText(value: Any?): String = when (value) {
+    internal fun contentText(value: Any?): String = when (value) {
         null, JSONObject.NULL -> ""
         is String -> value
         is JSONArray -> buildString {
@@ -284,7 +284,7 @@ object AnthropicRequestMapper {
     }
 
     /** 保留 JSON Schema 主体，去掉 Anthropic 专有/服务商易拒的元数据。 */
-    private fun sanitizeSchema(schema: JSONObject): JSONObject {
+    internal fun sanitizeSchema(schema: JSONObject): JSONObject {
         val out = copySchema(schema)
         if (!out.has("type")) out.put("type", "object")
         if (!out.has("properties")) out.put("properties", JSONObject())

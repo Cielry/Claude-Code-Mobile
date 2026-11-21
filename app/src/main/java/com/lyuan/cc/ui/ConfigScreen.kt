@@ -709,6 +709,7 @@ fun ConfigScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EditProviderDialog(
     provider: ProviderEntity,
@@ -768,7 +769,7 @@ private fun EditProviderDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("兼容接口", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ProviderProtocol.entries.forEach { option ->
                         ProtocolButton(
                             label = option.label,
@@ -1167,6 +1168,9 @@ private fun ProtocolPickerDialog(
                                     ProviderProtocol.OPENAI ->
                                         "服务商提供 OpenAI Chat Completions 地址；应用会在本机转换请求，" +
                                             "需要模型支持工具调用。"
+                                    ProviderProtocol.RESPONSES ->
+                                        "服务商提供 OpenAI Responses 地址（/v1/responses）；应用会在本机" +
+                                            "转换请求，需要模型支持工具调用。"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1202,6 +1206,7 @@ private data class ProviderPreset(
 private fun presetsFor(protocol: ProviderProtocol): List<ProviderPreset> = when (protocol) {
     ProviderProtocol.ANTHROPIC -> anthropicPresets
     ProviderProtocol.OPENAI -> openAiPresets
+    ProviderProtocol.RESPONSES -> responsesPresets
 }
 
 /** Anthropic Messages 兼容地址：选中后只需填 API Key。 */
@@ -1220,4 +1225,9 @@ private val openAiPresets = listOf(
     ProviderPreset("Kimi", "https://api.moonshot.cn/v1", "kimi-k2-0905-preview"),
     ProviderPreset("SiliconFlow", "https://api.siliconflow.cn/v1", "deepseek-ai/DeepSeek-V4.1-Flash"),
     ProviderPreset("Qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "deepseek-v4.1-flash-1017"),
+)
+
+/** Responses 接口：各家地址不同，只保留官方预设，其余用自定义填写。 */
+private val responsesPresets = listOf(
+    ProviderPreset("OpenAI", "https://api.openai.com/v1", "gpt-5"),
 )

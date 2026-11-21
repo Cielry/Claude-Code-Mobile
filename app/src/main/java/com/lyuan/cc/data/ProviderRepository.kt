@@ -101,7 +101,7 @@ class ProviderRepository(context: Context) {
     /**
      * 按协议、Base URL 与 Key 拉取模型列表。
      * Anthropic 兼容 `/v1/models`、`/models` 与带 `/anthropic` 后缀的地址；
-     * OpenAI 兼容 `/v1/models`、`/models`，只发送 Bearer 鉴权。
+     * OpenAI Chat Completions / Responses 兼容 `/v1/models`、`/models`，只发送 Bearer 鉴权。
      */
     suspend fun fetchModelsFor(
         baseUrl: String,
@@ -111,8 +111,8 @@ class ProviderRepository(context: Context) {
         runCatching {
             val base = normalizeBaseUrl(baseUrl).trimEnd('/')
             if (base.isBlank()) error("Base URL 为空")
-            val isOpenAi = ProviderProtocol.fromWire(protocol) == ProviderProtocol.OPENAI
-            val candidates = if (isOpenAi) {
+            val openAiLike = ProviderProtocol.fromWire(protocol).usesProxy
+            val candidates = if (openAiLike) {
                 when {
                     base.endsWith("/models") -> listOf(base)
                     base.endsWith("/v1") -> listOf("$base/models")
@@ -136,10 +136,10 @@ class ProviderRepository(context: Context) {
                         connectTimeout = 15_000
                         readTimeout = 20_000
                         setRequestProperty("Accept", "application/json")
-                        if (!isOpenAi) setRequestProperty("anthropic-version", "2023-06-01")
+                        if (!openAiLike) setRequestProperty("anthropic-version", "2023-06-01")
                         if (apiKey.isNotBlank()) {
                             setRequestProperty("Authorization", "Bearer $apiKey")
-                            if (!isOpenAi) setRequestProperty("x-api-key", apiKey)
+                            if (!openAiLike) setRequestProperty("x-api-key", apiKey)
                         }
                     }
                     val code = conn.responseCode

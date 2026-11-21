@@ -225,7 +225,7 @@ object OpenAiResponseMapper {
             .put("input", parseArguments(function.optString("arguments")))
     }
 
-    private fun parseArguments(raw: String): JSONObject {
+    internal fun parseArguments(raw: String): JSONObject {
         if (raw.isBlank()) return JSONObject()
         return runCatching { JSONObject(raw) }.getOrElse {
             JSONObject().put("_invalid_json", raw.take(1_000))

@@ -18,10 +18,12 @@ data class UpstreamResponse(
     override fun close() = disconnectAction()
 }
 
-/** OpenAI Chat Completions 上游客户端：不自动跟随重定向，不跨主机发送密钥。 */
+/** OpenAI 兼容上游客户端：不自动跟随重定向，不跨主机发送密钥。 */
 class OpenAiUpstreamClient(
     private val config: ProxyConfig,
     private val logger: ProxyLogger,
+    private val candidates: (String) -> List<String> = OpenAiEndpoints::chatCandidates,
+    private val endpointLabel: String = "Chat Completions",
 ) {
     private val active: MutableSet<HttpURLConnection> =
         Collections.newSetFromMap(ConcurrentHashMap<HttpURLConnection, Boolean>())
@@ -35,7 +37,7 @@ class OpenAiUpstreamClient(
 
     fun open(body: JSONObject, stream: Boolean): UpstreamResponse {
         val payload = body.toString()
-        val candidates = OpenAiEndpoints.chatCandidates(config.providerBaseUrl)
+        val candidates = this.candidates(config.providerBaseUrl)
         val ordered = buildList {
             preferredUrl?.takeIf { it in candidates }?.let(::add)
             addAll(candidates.filter { it != preferredUrl })
@@ -60,7 +62,7 @@ class OpenAiUpstreamClient(
             code = lastCode.coerceAtLeast(404),
             contentType = "application/json",
             input = null,
-            errorBody = lastBody.ifBlank { "没有可用的 Chat Completions 地址" },
+            errorBody = lastBody.ifBlank { "没有可用的 $endpointLabel 地址" },
             url = lastUrl,
             disconnectAction = {},
         )
