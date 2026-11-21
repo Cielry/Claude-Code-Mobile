@@ -5,7 +5,7 @@
 Root 或 Shizuku。
 
 - Application ID：`com.lyuan.cc`
-- 版本：`1.0.2`（versionCode 42）
+- 版本：`1.0.3`（versionCode 43）
 - 架构：`arm64-v8a`
 - Android：`minSdk 28` / `targetSdk 36` / `compileSdk 34`
 
