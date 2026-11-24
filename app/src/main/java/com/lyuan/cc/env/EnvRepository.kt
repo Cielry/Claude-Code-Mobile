@@ -22,6 +22,11 @@ data class InstalledPackage(
     val updatedAt: Long,
     /** 作为其他包的依赖自动安装（界面上归入「依赖包」分组）。 */
     val automatic: Boolean = false,
+    /**
+     * true = 软件源（Termux/bionic）包；false = 内置目录（glibc）包；
+     * null = 旧记录，读取时按 id/版本推断。
+     */
+    val mirror: Boolean? = null,
 )
 
 /** 已安装工具记录。安装包本体在文件系统，这里只存元数据。 */
@@ -72,6 +77,11 @@ class EnvRepository(private val context: Context) {
                 installedAt = obj.optLong("installedAt"),
                 updatedAt = obj.optLong("updatedAt"),
                 automatic = obj.optBoolean("automatic", false),
+                mirror = if (obj.has("mirror") && !obj.isNull("mirror")) {
+                    obj.optBoolean("mirror")
+                } else {
+                    null
+                },
             )
         }
     }.getOrDefault(emptyList())
@@ -89,6 +99,7 @@ class EnvRepository(private val context: Context) {
                     .put("installedAt", pkg.installedAt)
                     .put("updatedAt", pkg.updatedAt)
                     .put("automatic", pkg.automatic)
+                    .put("mirror", pkg.mirror ?: JSONObject.NULL)
             )
         }
         return array.toString()

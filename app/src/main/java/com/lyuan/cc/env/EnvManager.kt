@@ -67,6 +67,27 @@ data class BatchInstallState(
     val failures: List<BatchFailure> = emptyList(),
 )
 
+data class BatchUpdateFailure(
+    val name: String,
+    val fromVersion: String,
+    val toVersion: String,
+    val stage: String,
+    val message: String,
+)
+
+data class BatchUpdateState(
+    val running: Boolean = false,
+    val total: Int = 0,
+    val done: Int = 0,
+    val succeeded: Int = 0,
+    val skipped: Int = 0,
+    val failed: Int = 0,
+    val current: String = "",
+    val message: String = "",
+    val reportPath: String = "",
+    val failures: List<BatchUpdateFailure> = emptyList(),
+)
+
 private data class RegistryCommand(
     val name: String,
     val bin: String,
@@ -91,6 +112,13 @@ class EnvManager(private val context: Context) {
     val downloadsDir = File(root, "downloads")
     val aptCacheDir = File(root, "apt-cache")
     val certFile = File(root, "etc/cert.pem")
+
+    // pip 等外部工具需要的运行时路径。
+    val homeDir: File get() = runtime.homeDir
+    val tmpDir: File get() = runtime.tmpDir
+    val workDir: File get() = runtime.workDir
+    val loader: File get() = runtime.loader
+    val libDir: File get() = runtime.libDir
 
     private val launcher = File(context.applicationInfo.nativeLibraryDir, "libenv_exec.so")
 
@@ -238,6 +266,255 @@ class EnvManager(private val context: Context) {
         batchJob?.cancel()
     }
 
+    // ---------- 一键更新（软件源包） ----------
+
+    private var updateJob: Job? = null
+    private val _updateState = MutableStateFlow(BatchUpdateState())
+    val updateState: StateFlow<BatchUpdateState> = _updateState.asStateFlow()
+
+    /**
+     * 一键更新：对比软件源索引与已安装记录，只更新确实有新版本的软件源包。
+     * 内置目录包没有可对比的上游版本，直接跳过。
+     */
+    fun startBatchUpdate(mirror: AptMirror, reportDir: String) {
+        if (updateJob?.isActive == true || batchJob?.isActive == true) return
+        _updateState.value = BatchUpdateState(running = true, message = "读取软件源…")
+        updateJob = batchScope.launch {
+            var succeeded = 0
+            var skipped = 0
+            val failures = mutableListOf<BatchUpdateFailure>()
+            try {
+                val index = AptRepo.loadIndex(mirror, aptCacheDir)
+                val records = repo.installed.first().sortedBy { it.id }
+                var checked = 0
+                val targets = mutableListOf<Triple<InstalledPackage, AptPackage, String>>()
+                for (record in records) {
+                    checked++
+                    // 内置目录包不随软件源更新。
+                    if (packageById(record.id) != null ||
+                        catalogAliases[record.id]?.let { packageById(it) } != null
+                    ) {
+                        skipped++
+                        continue
+                    }
+                    val entry = index.get(record.id)
+                    if (entry == null || !DebVersion.isNewer(entry.version, record.version)) {
+                        skipped++
+                        continue
+                    }
+                    targets += Triple(record, entry, record.version)
+                }
+                _updateState.value = BatchUpdateState(
+                    running = true,
+                    total = targets.size,
+                    skipped = skipped,
+                    message = "共检查 $checked 个包，可更新 ${targets.size} 个",
+                )
+                if (targets.isEmpty()) {
+                    _updateState.value = BatchUpdateState(
+                        running = false,
+                        skipped = skipped,
+                        message = "共检查 $checked 个包，都已经是最新版本。",
+                    )
+                    return@launch
+                }
+                for ((indexOfTarget, target) in targets.withIndex()) {
+                    val (record, entry, oldVersion) = target
+                    _updateState.value = _updateState.value.copy(
+                        done = indexOfTarget,
+                        current = entry.name,
+                        message = "正在更新 ${entry.name}（${indexOfTarget + 1}/${targets.size}）",
+                    )
+                    var stage = ""
+                    val result = runCatching {
+                        val visited = LinkedHashSet<String>()
+                        ensureMirrorDependencies(entry, index, mirror, visited) { stage = it }
+                        val updated = installMirrorPackage(
+                            entry,
+                            mirror,
+                            dependencyLibs = libDirsOf(visited),
+                            automatic = record.automatic,
+                            force = true,
+                            onProgress = { _, _ -> },
+                            onStage = { stage = it },
+                        )
+                        cleanupOldVersion(record, updated)
+                        val check = updated.commands.firstOrNull()?.let { checkCommandLoose(it) }
+                        if (check != null) {
+                            repo.upsert(
+                                updated.copy(
+                                    status = if (check.ok) "ok" else "failed",
+                                    output = check.output,
+                                    updatedAt = System.currentTimeMillis(),
+                                )
+                            )
+                            if (!check.ok) error("已更新，但自检失败：${check.output}")
+                        }
+                    }
+                    if (result.isSuccess) {
+                        succeeded++
+                    } else {
+                        val error = result.exceptionOrNull()
+                        if (error is CancellationException) throw error
+                        failures += BatchUpdateFailure(
+                            name = entry.name,
+                            fromVersion = oldVersion,
+                            toVersion = entry.version,
+                            stage = stage.ifBlank { "更新" },
+                            message = error?.message ?: error?.javaClass?.simpleName
+                            ?: "未知错误",
+                        )
+                    }
+                    _updateState.value = _updateState.value.copy(
+                        done = indexOfTarget + 1,
+                        succeeded = succeeded,
+                        failed = failures.size,
+                    )
+                }
+                val report = if (failures.isNotEmpty()) {
+                    writeUpdateReport(
+                        reportDir,
+                        mirror,
+                        checked,
+                        skipped,
+                        succeeded,
+                        failures,
+                    )
+                } else {
+                    ""
+                }
+                _updateState.value = BatchUpdateState(
+                    running = false,
+                    total = targets.size,
+                    done = targets.size,
+                    succeeded = succeeded,
+                    skipped = skipped,
+                    failed = failures.size,
+                    message = buildString {
+                        append("一键更新完成：成功 ").append(succeeded)
+                        if (skipped > 0) {
+                            append("，跳过 ").append(skipped).append("（已是最新或内置包）")
+                        }
+                        if (failures.isNotEmpty()) append("，失败 ").append(failures.size)
+                        if (report.isNotBlank()) append("。错误报告：").append(report)
+                    },
+                    reportPath = report,
+                    failures = failures,
+                )
+            } catch (cancelled: CancellationException) {
+                _updateState.value = _updateState.value.copy(
+                    running = false,
+                    current = "",
+                    message = "一键更新已停止（完成 ${_updateState.value.done}/" +
+                        "${_updateState.value.total}）",
+                )
+                throw cancelled
+            } catch (t: Throwable) {
+                _updateState.value = _updateState.value.copy(
+                    running = false,
+                    current = "",
+                    message = "一键更新失败：${t.message ?: t.javaClass.simpleName}",
+                )
+            } finally {
+                updateJob = null
+            }
+        }
+    }
+
+    fun cancelBatchUpdate() {
+        updateJob?.cancel()
+    }
+
+    /** 更新前补齐新版本需要的依赖；已安装的依赖直接复用。 */
+    private suspend fun ensureMirrorDependencies(
+        pkg: AptPackage,
+        index: AptIndex,
+        mirror: AptMirror,
+        visited: LinkedHashSet<String>,
+        onStage: suspend (String) -> Unit,
+    ) {
+        suspend fun visit(dep: String) {
+            if (dep == pkg.name || !visited.add(dep)) return
+            if (repo.find(dep) != null) return
+            val catalogPkg = bundledCatalogPackage(dep)
+            if (catalogPkg != null) {
+                onStage("安装依赖 ${catalogPkg.name}（内置）…")
+                install(catalogPkg, onProgress = { _, _ -> }, onStage = { }).getOrThrow()
+                return
+            }
+            val entry = index.get(dep) ?: error("缺少依赖：$dep")
+            entry.depends.forEach { visit(it) }
+            onStage("安装依赖 ${entry.name}…")
+            installMirrorPackage(
+                entry,
+                mirror,
+                dependencyLibs = libDirsOf(visited),
+                automatic = true,
+                onProgress = { _, _ -> },
+                onStage = { _ -> },
+            )
+        }
+        pkg.depends.forEach { visit(it) }
+        if (pkg.name != "libandroid-support" && index.get("libandroid-support") != null) {
+            visit("libandroid-support")
+        }
+    }
+
+    /** 升级成功后删除旧版本目录，并清理新版本里已经不存在的命令入口。 */
+    private fun cleanupOldVersion(old: InstalledPackage, updated: InstalledPackage) {
+        if (old.version == updated.version) return
+        File(pkgsDir, "${old.id}/${safeVersion(old.version)}").deleteRecursively()
+        val newCommands = updated.commands.toSet()
+        old.commands.filterNot { it in newCommands }.forEach { command ->
+            val conf = File(registryDir, "$command.conf")
+            val belongs = runCatching { conf.readText().contains("PKG=${old.id}\n") }
+                .getOrDefault(false)
+            if (belongs) {
+                val link = File(binDir, command)
+                if (isOurSymlink(link)) link.delete()
+                conf.delete()
+            }
+        }
+    }
+
+    private fun writeUpdateReport(
+        reportDir: String,
+        mirror: AptMirror,
+        checked: Int,
+        skipped: Int,
+        succeeded: Int,
+        failures: List<BatchUpdateFailure>,
+    ): String = runCatching {
+        val dir = File(reportDir)
+        if (!dir.isDirectory) dir.mkdirs()
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val file = File(dir, "ccm-update-report-$stamp.txt")
+        val now = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        file.writeText(
+            buildString {
+                appendLine("# CCM 软件包一键更新报告")
+                appendLine("时间：$now")
+                appendLine("报告目录：${dir.absolutePath}")
+                appendLine("镜像：${mirror.label} ${mirror.baseUrl}")
+                appendLine(
+                    "共检查：$checked  已是最新/不可更新：$skipped  " +
+                        "成功：$succeeded  失败：${failures.size}"
+                )
+                appendLine()
+                appendLine("## 失败明细")
+                failures.forEachIndexed { index, failure ->
+                    appendLine(
+                        "${index + 1}. ${failure.name} ${failure.fromVersion} → " +
+                            "${failure.toVersion}"
+                    )
+                    appendLine("   阶段：${failure.stage}")
+                    appendLine("   错误：${failure.message}")
+                }
+            }
+        )
+        file.absolutePath
+    }.getOrDefault("")
+
     private fun writeBatchReport(
         workspace: String,
         mirror: AptMirror,
@@ -285,6 +562,9 @@ class EnvManager(private val context: Context) {
         runCatching { extractBaseLibs() }
         // APK 升级会改变 nativeLibraryDir，旧的命令链接需要重新指向当前启动器。
         runCatching { repairCommandLinks() }
+        // 旧版本把 glibc libbase 写进了 bionic 包的 LD_LIBRARY_PATH，升级后修正。
+        val repairedPackages = runCatching { repairRegistryLibs() }.getOrDefault(emptySet())
+        repairedPackages.forEach { id -> runCatching { recheck(id) } }
         // targetSdk 36 起，应用私有目录中的静态 ELF 无法直接执行；已下线的包自动清理。
         // bzip2 / make 现在可从软件源列表安装（CH-0046），不能再按旧内置包清理。
         runCatching {
@@ -297,6 +577,29 @@ class EnvManager(private val context: Context) {
         // 旧安装的 git 也需要补上子命令桥接（新安装时同样会执行）。
         runCatching { ensureGitPackage() }
         runProbe()
+    }
+
+    /**
+ * 修正旧 registry：从 LIBS / ENV_LD_LIBRARY_PATH 中移除 glibc 的 `libbase`。
+ * 返回受影响并需要重新自检的包 id。
+ */
+private fun repairRegistryLibs(): Set<String> {
+        val affected = mutableSetOf<String>()
+        val base = baseDir.absolutePath
+        registryDir.listFiles()?.forEach { conf ->
+            if (!conf.name.endsWith(".conf")) return@forEach
+            val text = runCatching { conf.readText() }.getOrDefault("")
+            if (!EnvRegistryRepair.needsRepair(text, base)) return@forEach
+            val repaired = EnvRegistryRepair.stripBase(text, base)
+            if (repaired == text) return@forEach
+            runCatching { conf.writeText(repaired) }.onSuccess {
+                Regex("(?m)^PKG=(.+)$").find(text)
+                    ?.groupValues?.get(1)?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(affected::add)
+            }
+        }
+        return affected
     }
 
     private fun repairCommandLinks() {
@@ -557,6 +860,7 @@ class EnvManager(private val context: Context) {
                     output = "",
                     installedAt = now,
                     updatedAt = now,
+                    mirror = false,
                 )
             )
             // git 安装后立即建立子命令桥接，保证 clone/push 可用。
@@ -575,6 +879,7 @@ class EnvManager(private val context: Context) {
                     output = check.output,
                     installedAt = now,
                     updatedAt = System.currentTimeMillis(),
+                    mirror = false,
                 )
             )
             if (!check.ok) error("已安装，但自检失败：${check.output}")
@@ -715,6 +1020,8 @@ class EnvManager(private val context: Context) {
             val record = repo.find(name)
                 ?: repo.find(catalogAliases[name] ?: return@forEach)
                 ?: return@forEach
+            // 软件源（bionic）命令不能把内置 glibc 包的库目录放进 LD_LIBRARY_PATH。
+            if (!isMirrorInstalled(record)) return@forEach
             listOf("lib", "lib64").forEach { sub ->
                 val dir = File(pkgsDir, "${record.id}/${safeVersion(record.version)}/$sub")
                 if (dir.isDirectory) dirs += dir
@@ -725,6 +1032,18 @@ class EnvManager(private val context: Context) {
 
     private fun safeVersion(version: String): String =
         version.replace(Regex("[^A-Za-z0-9._+-]"), "_").ifBlank { "unknown" }
+
+    /**
+     * 判断已安装记录是否来自软件源（Termux/bionic）。
+     * 内置目录的 id 与版本都固定；同名但版本不同（如软件源的 python 3.14 与内置 3.13）
+     * 也按软件源处理。
+     */
+    private fun isMirrorInstalled(record: InstalledPackage): Boolean {
+        record.mirror?.let { return it }
+        // 旧记录没有 mirror 字段：用 id/版本推断。
+        val catalogPkg = packageById(record.id) ?: return true
+        return record.version != catalogPkg.version
+    }
 
     /** 扫描解压后的 bin/，注册所有能解析到 ELF 的条目（含符号链接别名）。 */
     private fun scanBinCommands(versionDir: File): List<String> {
@@ -746,9 +1065,11 @@ class EnvManager(private val context: Context) {
         automatic: Boolean,
         onProgress: suspend (Long, Long) -> Unit,
         onStage: suspend (String) -> Unit,
+        force: Boolean = false,
     ): InstalledPackage = lockFor(pkg.name).withLock {
-        // 并发安装共享依赖时，后到者直接复用已安装的包。
-        repo.find(pkg.name) ?: installMirrorPackageLocked(
+        // 并发安装共享依赖时，后到者直接复用已安装的包；升级时 force 跳过复用。
+        val existing = if (force) null else repo.find(pkg.name)
+        existing ?: installMirrorPackageLocked(
             pkg, mirror, dependencyLibs, automatic, onProgress, onStage,
         )
     }
@@ -813,12 +1134,14 @@ class EnvManager(private val context: Context) {
             if (it.isDirectory) libDirs += it
         }
         dependencyLibs.forEach { if (it.isDirectory) libDirs += it }
-        // 应用自带兼容库（zlib / OpenSSL / libstdc++ 等）。
-        if (baseDir.isDirectory) libDirs += baseDir
-        // Termux 部分包没有在依赖元数据里声明全部共享库；统一把已安装包的
-        // lib/lib64 加入搜索路径，避免 libandroid-support / readline 等找不到。
+        // 注意：不要加入 env/libbase。它是 glibc 兼容库，bionic 命令的 linker
+        // 会优先选中其中的 libssl/libcrypto，随后因找不到 libc.so.6 而失败。
+        // Termux 部分包没有在依赖元数据里声明全部共享库；统一把已安装的
+        // **软件源（bionic）包** 的 lib/lib64 加入搜索路径，避免
+        // libandroid-support / readline 等找不到；内置 glibc 包的库目录不混入。
         runCatching {
             repo.installed.first().forEach { record ->
+                if (!isMirrorInstalled(record)) return@forEach
                 val pkgDir = File(pkgsDir, "${record.id}/${safeVersion(record.version)}")
                 listOf("lib", "lib64").forEach { sub ->
                     val dir = File(pkgDir, sub)
@@ -858,6 +1181,7 @@ class EnvManager(private val context: Context) {
             installedAt = now,
             updatedAt = now,
             automatic = automatic,
+            mirror = true,
         )
         repo.upsert(record)
         deb.delete()

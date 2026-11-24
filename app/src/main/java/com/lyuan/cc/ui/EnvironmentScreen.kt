@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,15 +46,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lyuan.cc.CcmOutput
+import com.lyuan.cc.data.WorkspaceUtils
 import com.lyuan.cc.env.AptMirror
 import com.lyuan.cc.env.BatchTarget
 import com.lyuan.cc.env.CatalogPackage
 import com.lyuan.cc.env.EnvManager
 import com.lyuan.cc.env.InstalledPackage
+import com.lyuan.cc.env.PipManager
+import com.lyuan.cc.env.PipPackage
 import com.lyuan.cc.env.TermuxPackage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -143,6 +149,7 @@ private fun buildPackageEntries(
 @Composable
 fun EnvironmentScreen(
     manager: EnvManager,
+    pipManager: PipManager,
     installed: List<InstalledPackage>,
     customWorkspace: String?,
     onOpenConfig: () -> Unit = {},
@@ -150,6 +157,8 @@ fun EnvironmentScreen(
     val scope = rememberCoroutineScope()
     val probe by manager.probe.collectAsState()
     val batchState by manager.batchState.collectAsState()
+    val updateState by manager.updateState.collectAsState()
+    val pipState by pipManager.state.collectAsState()
     val context = LocalContext.current
 
     var detecting by remember { mutableStateOf(false) }
@@ -158,10 +167,24 @@ fun EnvironmentScreen(
     var uninstallTarget by remember { mutableStateOf<UninstallTarget?>(null) }
 
     var pendingExport by remember { mutableStateOf("") }
+    var pendingPipExport by remember { mutableStateOf("") }
     var showWorkspaceRequired by remember { mutableStateOf(false) }
     var customName by rememberSaveable { mutableStateOf("") }
     var mirrorIndex by rememberSaveable { mutableIntStateOf(0) }
     var mirrorMenu by remember { mutableStateOf(false) }
+
+    var pipInput by rememberSaveable { mutableStateOf("") }
+    var pipExpanded by rememberSaveable { mutableStateOf(false) }
+    var pipQuery by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(Unit) { pipManager.refresh() }
+
+    fun reportDir(): String {
+        val custom = customWorkspace?.takeIf { WorkspaceUtils.isUsable(it) }
+        if (custom != null) return File(custom).absolutePath
+        val dir = CcmOutput.outputDir(context).apply { mkdirs() }
+        return dir.absolutePath
+    }
 
     // 并发安装：按任务键（包 id 或输入内容）记录阶段与进度，任务之间互不阻塞。
     var tasks by remember { mutableStateOf<Map<String, InstallTask>>(emptyMap()) }
@@ -239,7 +262,26 @@ fun EnvironmentScreen(
                     onFailure = { "安装失败：${it.message}" },
                 )
             )
+            if (result.isSuccess && pkg.id == "python") {
+                pipManager.refresh()
+            }
         }
+    }
+
+    fun startPipInstall() {
+        val input = pipInput.trim()
+        if (input.isEmpty() || pipState.busy) return
+        pipManager.install(input, customWorkspace)
+    }
+
+    fun startPackageUpdate() {
+        if (updateState.running || batchState.running) return
+        manager.startBatchUpdate(AptMirror.ALL[mirrorIndex], reportDir())
+    }
+
+    fun startPipUpdate() {
+        if (pipState.busy) return
+        pipManager.startUpdate(reportDir())
     }
 
     fun recheckPackage(id: String, name: String) {
@@ -270,6 +312,9 @@ fun EnvironmentScreen(
                     onFailure = { "卸载失败：${it.message}" },
                 )
             )
+            if (result.isSuccess && id == "python") {
+                pipManager.refresh()
+            }
         }
     }
 
@@ -309,6 +354,24 @@ fun EnvironmentScreen(
         }
     }
 
+    val pipExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(pendingPipExport.toByteArray(Charsets.UTF_8))
+                } ?: error("无法写入所选位置")
+            }
+            addMessage(
+                result.fold(
+                    onSuccess = { "已导出 ${pipState.packages.size} 个 pip 包。" },
+                    onFailure = { "导出失败：${it.message}" },
+                )
+            )
+        }
+    }
+
     val entries = remember(manager.catalog, manager.termuxPackages, installed) {
         buildPackageEntries(manager.catalog, manager.termuxPackages, installed)
     }
@@ -326,6 +389,14 @@ fun EnvironmentScreen(
         }
     }
     val pendingCount = filtered.count { installedById[it.id] == null }
+    val filteredPip = remember(pipState.packages, pipQuery) {
+        val query = pipQuery.trim()
+        if (query.isEmpty()) {
+            pipState.packages
+        } else {
+            pipState.packages.filter { it.name.contains(query, ignoreCase = true) }
+        }
+    }
 
     fun startOneClick() {
         val workspace = customWorkspace?.takeIf { it.isNotBlank() }
@@ -496,6 +567,125 @@ fun EnvironmentScreen(
             }
         }
 
+        // ---------- Python pip 安装 ----------
+        item(key = "pip-install") {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("Python pip", style = MaterialTheme.typography.labelLarge)
+                    if (!pipState.pythonInstalled) {
+                        Text(
+                            "尚未安装 Python。先安装内置的 Python（含 pip），" +
+                                "之后才能安装 pip 包。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        val pythonPkg = manager.packageById("python")
+                        val pythonTask = tasks["python"]
+                        Button(
+                            enabled = pythonPkg != null && pythonTask == null &&
+                                !pipState.busy && !updateState.running &&
+                                !batchState.running,
+                            onClick = { pythonPkg?.let { startCatalogInstall(it) } },
+                        ) {
+                            Text(if (pythonTask != null) "安装 Python 中…" else "安装 Python（含 pip）")
+                        }
+                        if (pythonTask != null) {
+                            Text(
+                                taskLabel(pythonTask),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outline,
+                                        RoundedCornerShape(8.dp),
+                                    )
+                                    .padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (pipInput.isEmpty()) {
+                                    Text(
+                                        "pip 包名，或 pip install 包名",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                BasicTextField(
+                                    value = pipInput,
+                                    onValueChange = { pipInput = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    ),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                )
+                            }
+                            Button(
+                                enabled = pipInput.isNotBlank() && !pipState.busy &&
+                                    !batchState.running && !updateState.running,
+                                onClick = { startPipInstall() },
+                            ) { Text("安装") }
+                        }
+                        if (pipState.pythonFromMirror) {
+                            Text(
+                                "当前 Python 来自软件源（bionic），需要编译的包可能失败；" +
+                                    "这类包建议改用内置 Python（glibc）。",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (pipState.busy) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    pipState.stage.ifBlank { "处理中…" },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                if (!pipState.loading) {
+                                    OutlinedButton(onClick = { pipManager.cancel() }) {
+                                        Text("停止")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (pipState.message.isNotBlank()) {
+                        Text(
+                            pipState.message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (pipState.pythonInstalled) {
+                        Text(
+                            "pip 包装在 Python 环境内；卸载或重装 Python 会一并清除。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
         // ---------- 消息 ----------
         items(messages) { text ->
             Text(
@@ -549,7 +739,8 @@ fun EnvironmentScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(
-                            enabled = !batchState.running && pendingCount > 0,
+                            enabled = !batchState.running && !updateState.running &&
+                                !pipState.busy && pendingCount > 0,
                             onClick = { startOneClick() },
                         ) {
                             Text(
@@ -563,18 +754,38 @@ fun EnvironmentScreen(
                             }
                         }
                     }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(
+                            enabled = !batchState.running && !updateState.running &&
+                                !pipState.busy && installed.isNotEmpty(),
+                            onClick = { startPackageUpdate() },
+                        ) {
+                            Text(if (updateState.running) "一键更新中…" else "一键更新")
+                        }
+                        if (updateState.running) {
+                            OutlinedButton(onClick = { manager.cancelBatchUpdate() }) {
+                                Text("停止更新")
+                            }
+                        }
+                    }
                     Text(
                         if (customWorkspace == null) {
-                            "一键安装需要先在「配置」页添加并选择自定义工作区。"
+                            "一键安装需要先在「配置」页添加并选择自定义工作区。" +
+                                "一键更新的失败报告会写入应用诊断目录。"
                         } else {
-                            "当前列表中的包：已安装的跳过，失败的包会整理成报告写入该工作区。"
+                            "当前列表中的包：已安装的跳过，失败的包会整理成报告写入该工作区。" +
+                                "一键更新只升级软件源包。"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (batchState.running || batchState.done > 0) {
                         Text(
-                            "进度 ${batchState.done}/${batchState.total}" +
+                            "安装进度 ${batchState.done}/${batchState.total}" +
                                 if (batchState.current.isNotBlank()) {
                                     " · ${batchState.current}"
                                 } else {
@@ -590,6 +801,31 @@ fun EnvironmentScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                    if (updateState.running || updateState.done > 0 ||
+                        updateState.message.isNotBlank()
+                    ) {
+                        Text(
+                            if (updateState.total > 0) {
+                                "更新进度 ${updateState.done}/${updateState.total}" +
+                                    if (updateState.current.isNotBlank()) {
+                                        " · ${updateState.current}"
+                                    } else {
+                                        ""
+                                    }
+                            } else {
+                                updateState.message
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        if (updateState.total > 0 && updateState.message.isNotBlank()) {
+                            Text(
+                                updateState.message,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -641,6 +877,129 @@ fun EnvironmentScreen(
                         recheckPackage(entry.id, entry.name)
                     },
                 )
+            }
+        }
+
+        // ---------- pip 包列表 ----------
+        item(key = "pip-header") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { pipExpanded = !pipExpanded }) {
+                    Text(
+                        text = (if (pipExpanded) "▾ " else "▸ ") +
+                            "pip 包（${pipState.packages.size}）",
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "已安装 ${pipState.packages.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(
+                        enabled = !pipState.busy,
+                        onClick = { pipManager.refresh() },
+                    ) { Text("刷新") }
+                    TextButton(
+                        enabled = pipState.packages.isNotEmpty(),
+                        onClick = {
+                            pendingPipExport = pipManager.exportText()
+                            val name = "ccm-pip-packages-" +
+                                SimpleDateFormat("yyyyMMdd-HHmm", Locale.US)
+                                    .format(Date()) + ".txt"
+                            pipExportLauncher.launch(name)
+                        },
+                    ) { Text("导出") }
+                }
+            }
+        }
+
+        if (pipExpanded) {
+            item(key = "pip-actions") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            enabled = !pipState.busy && pipState.packages.isNotEmpty() &&
+                                !batchState.running && !updateState.running,
+                            onClick = { startPipUpdate() },
+                        ) {
+                            Text(
+                                if (pipState.updateRunning) "pip 更新中…"
+                                else "一键更新 pip 包"
+                            )
+                        }
+                        if (pipState.updateRunning) {
+                            OutlinedButton(onClick = { pipManager.cancel() }) {
+                                Text("停止更新")
+                            }
+                        }
+                    }
+                    Text(
+                        "只升级有更新版本的包，已是最新的自动跳过；" +
+                            "失败报告写入当前工作区（无自定义工作区时写入应用诊断目录）。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (pipState.updateRunning || pipState.updateTotal > 0) {
+                        Text(
+                            "更新进度 ${pipState.updateDone}/${pipState.updateTotal}" +
+                                " · 成功 ${pipState.updateSucceeded}" +
+                                " · 已最新 ${pipState.updateSkipped}" +
+                                " · 失败 ${pipState.updateFailed}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    if (pipState.stage.isNotBlank() && pipState.busy) {
+                        Text(
+                            pipState.stage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (pipState.message.isNotBlank()) {
+                        Text(
+                            pipState.message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            item(key = "pip-search") {
+                OutlinedTextField(
+                    value = pipQuery,
+                    onValueChange = { pipQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("搜索 pip 包名") },
+                )
+            }
+            if (filteredPip.isEmpty()) {
+                item(key = "pip-empty") {
+                    Text(
+                        when {
+                            !pipState.pythonInstalled -> "先安装 Python（含 pip），再查看 pip 包。"
+                            pipQuery.isNotBlank() -> "没有匹配的 pip 包。"
+                            pipState.loading -> "正在读取 pip 包…"
+                            else -> "暂无 pip 包。"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            items(filteredPip, key = { "pip:${it.name}" }) { pkg ->
+                PipRow(pkg)
             }
         }
 
@@ -697,6 +1056,28 @@ fun EnvironmentScreen(
                 TextButton(onClick = { showWorkspaceRequired = false }) { Text("取消") }
             },
         )
+    }
+}
+
+@Composable
+private fun PipRow(pkg: PipPackage) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(pkg.name, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "v${pkg.version}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        HorizontalDivider()
     }
 }
 

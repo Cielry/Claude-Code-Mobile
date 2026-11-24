@@ -55,6 +55,7 @@ import com.lyuan.cc.data.SettingsRepository
 import com.lyuan.cc.data.Workspace
 import com.lyuan.cc.data.WorkspaceUtils
 import com.lyuan.cc.env.EnvManager
+import com.lyuan.cc.env.PipManager
 import com.lyuan.cc.runtime.RuntimeManager
 import com.lyuan.cc.ui.ConfigScreen
 import com.lyuan.cc.ui.EnvironmentScreen
@@ -84,6 +85,7 @@ class MainActivity : ComponentActivity() {
         val providerRepo = ProviderRepository(applicationContext)
         val db = AppDatabase.get(applicationContext)
         val envManager = EnvManager(applicationContext)
+        val pipManager = PipManager(applicationContext, envManager)
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { providerRepo.importLegacyIfNeeded(settings) }
             runCatching { settings.migrateLegacyWorkspace() }
@@ -116,7 +118,10 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                         true -> PermissionGate {
-                            MainScreen(settings, runtime, providerRepo, db, envManager)
+                            MainScreen(
+                                settings, runtime, providerRepo, db, envManager,
+                                pipManager,
+                            )
                         }
                     }
                 }
@@ -141,6 +146,7 @@ private fun MainScreen(
     providerRepo: ProviderRepository,
     db: AppDatabase,
     envManager: EnvManager,
+    pipManager: PipManager,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -277,7 +283,7 @@ private fun MainScreen(
                     when (tabIndex) {
                         0 -> TerminalScreen(
                             runtime = runtime,
-                            spec = spec,
+                                                        spec = spec,
                             onOpenDrawer = { scope.launch { drawerState.open() } },
                             onSessionClosed = {
                                 scope.launch {
@@ -289,6 +295,7 @@ private fun MainScreen(
                         )
                         1 -> EnvironmentScreen(
                             manager = envManager,
+                            pipManager = pipManager,
                             installed = installedEnv,
                             customWorkspace = workspaces
                                 .firstOrNull { it.id == selectedWorkspaceId }

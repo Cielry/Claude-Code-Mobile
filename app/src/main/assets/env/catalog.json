@@ -36,8 +36,8 @@
       "size": 58894021,
       "sha256": "b48451865bde9a39e2f3e71d7fdcbf1f32615f50f24d78dc50d04ede6501cf81",
       "urls": [
-        "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone/20261026/cpython-3.13.18%2B20261026-aarch64-unknown-linux-gnu-install_only.tgz",
-        "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18%2B20261026-aarch64-unknown-linux-gnu-install_only.tgz"
+        "https://mirror.nju.edu.cn/github-release/astral-sh/python-build-standalone/20261026/cpython-3.13.18%2B20261026-aarch64-unknown-linux-gnu-install_only.tar.gz",
+        "https://github.com/astral-sh/python-build-standalone/releases/download/20261026/cpython-3.13.18%2B20261026-aarch64-unknown-linux-gnu-install_only.tar.gz"
       ],
       "stripComponents": 1,
       "binDir": "bin",
@@ -48,7 +48,9 @@
         "pip3",
         "pip"
       ],
-      "libs": [],
+      "libs": [
+        "lib"
+      ],
       "checkArgs": [
         "-V"
       ]
